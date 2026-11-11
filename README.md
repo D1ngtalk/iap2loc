@@ -1,6 +1,6 @@
 # iap2loc
 
-通过 iAP2 协议向 iOS 设备下发定位（NMEA），并提供一个本地 Web 控制台用于选点和调参。
+Windows 下的 iAP2 定位客户端，通过 iAP2 协议向 iOS 设备下发定位（NMEA），并提供一个本地 Web 控制台用于选点和调参。
 
 定位最终由 iOS 统一融合：配件只是其中一个来源，并不等于系统级替换。
 
@@ -8,7 +8,7 @@
 
 ### 1. 准备
 
-- 从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 下载 `iap2loc.exe`
+- 从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 下载 `iap2loc.exe` 或 [构建](#构建) 你自己的版本 (需要一份可用的 MFi 配件身份 `identity.pk8` + `certificate.p7b` ，放入 `./identity` 文件夹，仓库不包含任何身份材料)
 - 在 Windows「设置 → 蓝牙和其他设备」中配对 iOS 设备
 
 ### 2. 连接
