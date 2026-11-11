@@ -206,7 +206,7 @@ internal sealed class WebServer : IDisposable
             Host = payload.Host,
             Port = payload.Port ?? 0,
             IdentityDirectory = payload.Identity,
-            Rate = payload.Rate ?? 200,
+            Rate = payload.Rate ?? 100,
             Sentences = payload.Sentences,
             Label = string.IsNullOrWhiteSpace(payload.Label) ? (payload.Mac ?? "iPhone") : payload.Label!,
         };

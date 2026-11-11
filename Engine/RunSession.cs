@@ -10,7 +10,7 @@ internal sealed record RunRequest
     public string? Host { get; init; }
     public int Port { get; init; }
     public string? IdentityDirectory { get; init; }
-    public int Rate { get; init; } = 200;
+    public int Rate { get; init; } = 100;
     public string? Sentences { get; init; }
     public string Name { get; init; } = "iAP2 Loc";
     public string Serial { get; init; } = "LOC000000001";
