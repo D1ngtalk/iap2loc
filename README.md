@@ -98,7 +98,7 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--lat` / `--lon` | 目标坐标，默认 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
 | `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
-| `--rate` | 上报周期（毫秒），默认 200 |
+| `--rate` | 上报周期（毫秒），默认 200，最小 10 |
 | `--identity` | 身份目录；缺省时链路与识别可用，认证不会通过 |
 | `--name` / `--model` / `--serial` … | 配件身份展示字段 |
 | `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |

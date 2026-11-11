@@ -36,7 +36,7 @@ internal sealed class LocationSession : IDisposable
         _target = target;
         _identity = identity;
         _signer = signer;
-        _intervalMs = Math.Max(200, intervalMs);
+        _intervalMs = Math.Max(10, intervalMs);
         _sentences = sentences;
         _bluetoothAdapter = bluetoothAdapter;
         _link.CsmReceived += OnCsm;
@@ -53,7 +53,7 @@ internal sealed class LocationSession : IDisposable
 
     public void SetInterval(int intervalMs)
     {
-        var next = Math.Max(200, intervalMs);
+        var next = Math.Max(10, intervalMs);
         lock (_timerGate)
         {
             if (next == _intervalMs)

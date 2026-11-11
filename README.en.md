@@ -99,7 +99,7 @@ Common options:
 | `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
 | `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
-| `--rate` | Update interval in ms, default 200 |
+| `--rate` | Update interval in ms, default 200, minimum 10 |
 | `--identity` | Identity directory; without it the link and identification still work, but authentication will not |
 | `--name` / `--model` / `--serial` … | Accessory identity fields |
 | `--probe` | Exit on `0x1D02` / `0x1D03` |
