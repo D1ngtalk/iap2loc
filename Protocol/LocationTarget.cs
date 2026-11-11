@@ -42,6 +42,9 @@ internal sealed class LocationTarget
     private double _accuracyMaxMeters = 12;
     private int _quality = 1;
     private int _satellites = 8;
+    private bool _jitterAltitude;
+    private double _altitudeMinMeters = 5;
+    private double _altitudeMaxMeters = 20;
 
     private RoutePath? _route;
     private ulong _routeSignature;
@@ -55,6 +58,7 @@ internal sealed class LocationTarget
     private double _resolvedLatitude;
     private double _resolvedLongitude;
     private double? _resolvedAccuracyMeters;
+    private double? _resolvedAltitudeMeters;
 
     public LocationTarget(double latitude, double longitude)
     {
@@ -72,11 +76,15 @@ internal sealed class LocationTarget
             var oldLatitude = _latitude;
             var oldLongitude = _longitude;
             var oldAccuracy = _accuracyMeters;
+            var oldAltitude = _altitudeMeters;
             var oldJitterPosition = _jitterPosition;
             var oldJitterMeters = _jitterMeters;
             var oldJitterAccuracy = _jitterAccuracy;
             var oldAccuracyMin = _accuracyMinMeters;
             var oldAccuracyMax = _accuracyMaxMeters;
+            var oldJitterAltitude = _jitterAltitude;
+            var oldAltitudeMin = _altitudeMinMeters;
+            var oldAltitudeMax = _altitudeMaxMeters;
 
             var restartWalk = false;
 
@@ -130,6 +138,9 @@ internal sealed class LocationTarget
             if (update.AccuracyMax is { } maximum) _accuracyMaxMeters = Math.Max(_accuracyMinMeters, maximum);
             if (update.Quality is { } quality) _quality = Math.Clamp(quality, 0, 8);
             if (update.Satellites is { } satellites) _satellites = Math.Clamp(satellites, 0, 99);
+            if (update.JitterAltitude is { } jitterAltitude) _jitterAltitude = jitterAltitude;
+            if (update.AltitudeMin is { } altitudeMin) _altitudeMinMeters = altitudeMin;
+            if (update.AltitudeMax is { } altitudeMax) _altitudeMaxMeters = Math.Max(_altitudeMinMeters, altitudeMax);
 
             if (restartWalk)
             {
@@ -144,7 +155,10 @@ internal sealed class LocationTarget
                                 Math.Abs(_jitterMeters - oldJitterMeters) > 1e-9 ||
                                 _jitterAccuracy != oldJitterAccuracy ||
                                 Math.Abs(_accuracyMinMeters - oldAccuracyMin) > 1e-9 ||
-                                Math.Abs(_accuracyMaxMeters - oldAccuracyMax) > 1e-9;
+                                Math.Abs(_accuracyMaxMeters - oldAccuracyMax) > 1e-9 ||
+                                _jitterAltitude != oldJitterAltitude ||
+                                Math.Abs(_altitudeMinMeters - oldAltitudeMin) > 1e-9 ||
+                                Math.Abs(_altitudeMaxMeters - oldAltitudeMax) > 1e-9;
 
             if (positionChanged || jitterChanged || restartWalk)
             {
@@ -157,6 +171,10 @@ internal sealed class LocationTarget
                     _resolvedAccuracyMeters = _accuracyMeters;
                 }
 
+                if (!_jitterAltitude && _altitudeMeters != oldAltitude)
+                {
+                    _resolvedAltitudeMeters = _altitudeMeters;
+                }
             }
         }
     }
@@ -169,7 +187,8 @@ internal sealed class LocationTarget
                 _mode,
                 _latitude, _longitude, _altitudeMeters, _accuracyMeters, _speedMetersPerSecond, _bearingDegrees,
                 _jitterPosition, _jitterMeters, _jitterAccuracy, _accuracyMinMeters, _accuracyMaxMeters,
-                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters,
+                _jitterAltitude, _altitudeMinMeters, _altitudeMaxMeters,
+                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters, _resolvedAltitudeMeters,
                 _route?.Count ?? 0, _route?.LengthMeters ?? 0,
                 _route is null ? 0 : Travelled(),
                 _walkSpeedMps, _walkLoop, _quality, _satellites);
@@ -187,7 +206,7 @@ internal sealed class LocationTarget
                 return new LocationFix(
                     sample.Point.Latitude,
                     sample.Point.Longitude,
-                    sample.Point.Altitude ?? _altitudeMeters,
+                    sample.Point.Altitude ?? _resolvedAltitudeMeters,
                     _walkSpeedMps,
                     sample.Bearing,
                     _resolvedAccuracyMeters,
@@ -196,7 +215,7 @@ internal sealed class LocationTarget
             }
 
             return new LocationFix(
-                _resolvedLatitude, _resolvedLongitude, _altitudeMeters,
+                _resolvedLatitude, _resolvedLongitude, _resolvedAltitudeMeters,
                 _speedMetersPerSecond, _bearingDegrees, _resolvedAccuracyMeters, _quality, _satellites);
         }
     }
@@ -234,6 +253,7 @@ internal sealed class LocationTarget
         _resolvedLatitude = _latitude;
         _resolvedLongitude = _longitude;
         _resolvedAccuracyMeters = _accuracyMeters;
+        _resolvedAltitudeMeters = _altitudeMeters;
 
         if (_jitterPosition && _jitterMeters > 0)
         {
@@ -249,6 +269,12 @@ internal sealed class LocationTarget
         {
             var span = Math.Max(0, _accuracyMaxMeters - _accuracyMinMeters);
             _resolvedAccuracyMeters = Math.Round(_accuracyMinMeters + Random.Shared.NextDouble() * span, 1);
+        }
+
+        if (_jitterAltitude)
+        {
+            var span = Math.Max(0, _altitudeMaxMeters - _altitudeMinMeters);
+            _resolvedAltitudeMeters = Math.Round(_altitudeMinMeters + Random.Shared.NextDouble() * span, 1);
         }
     }
 }
@@ -276,6 +302,9 @@ internal sealed record TargetUpdate
     public double? AccuracyMax { get; init; }
     public int? Quality { get; init; }
     public int? Satellites { get; init; }
+    public bool? JitterAltitude { get; init; }
+    public double? AltitudeMin { get; init; }
+    public double? AltitudeMax { get; init; }
 }
 
 internal sealed record TargetState(
@@ -291,9 +320,13 @@ internal sealed record TargetState(
     bool JitterAccuracy,
     double AccuracyMin,
     double AccuracyMax,
+    bool JitterAltitude,
+    double AltitudeMin,
+    double AltitudeMax,
     double ResolvedLatitude,
     double ResolvedLongitude,
     double? ResolvedAccuracy,
+    double? ResolvedAltitude,
     int RoutePoints,
     double RouteLengthMeters,
     double WalkTravelledMeters,

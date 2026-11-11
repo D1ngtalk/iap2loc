@@ -418,6 +418,9 @@ internal sealed class WebServer : IDisposable
         public double? AccuracyMax { get; set; }
         public int? Quality { get; set; }
         public int? Satellites { get; set; }
+        public bool? JitterAltitude { get; set; }
+        public double? AltitudeMin { get; set; }
+        public double? AltitudeMax { get; set; }
         public int? Rate { get; set; }
 
         public TargetUpdate ToUpdate() => new()
@@ -439,6 +442,9 @@ internal sealed class WebServer : IDisposable
             AccuracyMax = AccuracyMax,
             Quality = Quality,
             Satellites = Satellites,
+            JitterAltitude = JitterAltitude,
+            AltitudeMin = AltitudeMin,
+            AltitudeMax = AltitudeMax,
         };
 
         private static TargetMode? ParseMode(string? text) => text?.Trim().ToLowerInvariant() switch

@@ -73,6 +73,7 @@
   #log div { white-space: pre-wrap; word-break: break-all; }
   #log .t { color: #7d7a72; } #log .ok { color: #7fd1a8; } #log .error { color: #f0a3a3; }
   #log .warn { color: #e8c27a; } #log .step { color: #9cc4ea; }
+  body.log-hidden #log { display: none; }
   .mapnote { position: absolute; z-index: 500; left: 12px; top: 12px; background: rgba(255,255,255,.94);
     border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
   .wp span { display: block; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff;
@@ -136,9 +137,25 @@
         <div class="row"><label>精度 m</label><input id="accuracy" type="number" step="0.1" value="5" /></div>
         <div class="row"><label>高度 m</label><input id="alt" type="number" step="0.1" value="10" /></div>
 
-        <div class="row"><label>随机精度</label><input id="jitterAccuracy" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
-        <div class="row"><label>随机偏移</label><input id="jitterPosition" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
-        <p class="hint">随机项都在应用时取一次值，之后保持不变。</p>
+        <div class="row"><label>随机精度</label><input id="jitterAccuracy" type="checkbox" />
+          <input id="accuracyMin" class="compact" type="number" step="0.1" value="3" />
+          <span class="dash">–</span>
+          <input id="accuracyMax" class="compact" type="number" step="0.1" value="12" />
+          <span class="unit">m</span>
+        </div>
+        <div class="row"><label>随机偏移</label><input id="jitterPosition" type="checkbox" />
+          <input id="jitterMeters" class="compact" type="number" step="1" value="10" />
+          <span class="unit">m</span>
+        </div>
+        <div class="row"><label>随机高度</label><input id="jitterAltitude" type="checkbox" />
+          <span id="altRange" class="row" style="display:none; margin:0; flex:1">
+            <input id="altitudeMin" class="compact" type="number" step="1" value="5" />
+            <span class="dash">–</span>
+            <input id="altitudeMax" class="compact" type="number" step="1" value="20" />
+            <span class="unit">m</span>
+          </span>
+        </div>
+        <p class="hint">三个随机项都在应用时取一次值，之后保持不变。</p>
 
         <div class="readout" id="resolvedRow" style="display:none"><span>实际发送</span><span id="resolvedText">—</span></div>
         <div class="readout"><span>已应用</span><span id="appliedText">—</span></div>
@@ -191,8 +208,7 @@
           </div>
           <div class="row" id="rowHost" style="display:none"><label>TCP 地址</label><input id="host" value="127.0.0.1" /></div>
           <div class="row" id="rowPort" style="display:none"><label>TCP 端口</label><input id="port" type="number" value="8738" /></div>
-          <div class="row"><label>精度范围</label><input id="accuracyMin" type="number" step="0.1" value="3" /><input id="accuracyMax" type="number" step="0.1" value="12" /></div>
-          <div class="row"><label>偏移半径</label><input id="jitterMeters" type="number" step="1" value="10" /></div>
+          <div class="row"><label style="width:auto">控制台日志</label><input id="showLog" type="checkbox" /><span class="hint" style="margin:0">在下方显示实时输出</span></div>
           <p class="hint">周期、定位质量与卫星数实时生效；MFi 密钥对之后新加的设备生效。</p>
         </details>
       </section>
@@ -251,8 +267,9 @@ const MODES = [
 const S = {
   mode: 'point',
   target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5, quality: 1, satellites: 8,
-            jitterPosition: false, jitterMeters: 10, jitterAccuracy: false,
-            accuracyMin: 3, accuracyMax: 12 },
+            jitterPosition: false, jitterMeters: 10,
+            jitterAccuracy: false, accuracyMin: 3, accuracyMax: 12,
+            jitterAltitude: false, altitudeMin: 5, altitudeMax: 20 },
   route: [],
   walkSpeed: 5,
   walkLoop: true,
@@ -522,6 +539,7 @@ function readInputs() {
   S.target.alt = num('alt', 10);
   S.target.jitterAccuracy = el('jitterAccuracy').checked;
   S.target.jitterPosition = el('jitterPosition').checked;
+  S.target.jitterAltitude = el('jitterAltitude').checked;
   S.target.accuracyMin = num('accuracyMin', 3);
   S.target.accuracyMax = num('accuracyMax', 12);
   S.target.jitterMeters = num('jitterMeters', 10);
@@ -529,6 +547,8 @@ function readInputs() {
   S.target.quality = Number.isFinite(quality) ? quality : 1;
   const satellites = parseInt(el('satellites').value, 10);
   S.target.satellites = Number.isFinite(satellites) ? Math.max(0, Math.min(99, satellites)) : 8;
+  S.target.altitudeMin = num('altitudeMin', 5);
+  S.target.altitudeMax = num('altitudeMax', 20);
   S.walkSpeed = num('walkSpeed', 5);
   S.walkLoop = el('walkLoop').checked;
   S.rate = num('rate', 250);
@@ -576,6 +596,7 @@ function buildPayload(tolerateEmptyRoute) {
     jitterPosition: S.target.jitterPosition, jitterMeters: S.target.jitterMeters,
     jitterAccuracy: S.target.jitterAccuracy, accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax,
     quality: S.target.quality, satellites: S.target.satellites,
+    jitterAltitude: S.target.jitterAltitude, altitudeMin: S.target.altitudeMin, altitudeMax: S.target.altitudeMax,
     rate: S.rate,
     walkSpeedKmh: S.walkSpeed, walkLoop: S.walkLoop,
     route: mode === 'walk'
@@ -605,7 +626,7 @@ async function applyTarget(options = {}) {
 }
 
 function updateResolved(target) {
-  const active = target.jitterPosition || target.jitterAccuracy;
+  const active = target.jitterPosition || target.jitterAccuracy || target.jitterAltitude;
   el('resolvedRow').style.display = active ? 'flex' : 'none';
   if (!active) return;
 
@@ -613,6 +634,7 @@ function updateResolved(target) {
   if (target.mode !== 'walk') {
     parts.push(target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6));
   }
+  if (target.resolvedAltitude != null) parts.push(target.resolvedAltitude.toFixed(1) + ' m 高');
   if (target.resolvedAccuracy != null) parts.push(target.resolvedAccuracy.toFixed(1) + ' m 精度');
   el('resolvedText').textContent = parts.join(' · ');
 }
@@ -631,12 +653,16 @@ function renderApplied(target) {
   }
 }
 
-['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','walkSpeed','rate','satellites'].forEach(id => {
+['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','altitudeMin','altitudeMax','walkSpeed','rate','satellites'].forEach(id => {
   el(id).addEventListener('input', onEdited);
 });
 el('quality').addEventListener('change', onEdited);
-['jitterAccuracy','jitterPosition','walkLoop'].forEach(id => {
+['jitterAccuracy','jitterPosition','jitterAltitude','walkLoop'].forEach(id => {
   el(id).addEventListener('change', onEdited);
+});
+
+el('jitterAltitude').addEventListener('change', () => {
+  el('altRange').style.display = el('jitterAltitude').checked ? 'flex' : 'none';
 });
 
 el('apply').addEventListener('click', () => applyTarget());
@@ -656,7 +682,28 @@ el('transport').addEventListener('change', () => {
 
 /* ---------- log ---------- */
 
+const logBuffer = [];
+let logVisible = false;
+
+function setLogVisible(on) {
+  logVisible = on;
+  el('showLog').checked = on;
+  document.body.classList.toggle('log-hidden', !on);
+  try { localStorage.setItem('iap2loc.showLog', on ? '1' : '0'); } catch (e) { }
+  if (on) {
+    el('log').innerHTML = '';
+    logBuffer.slice(-300).forEach(appendLogDom);
+    el('log').scrollTop = el('log').scrollHeight;
+  }
+}
+
 function appendLog(entry) {
+  logBuffer.push(entry);
+  if (logBuffer.length > 400) logBuffer.shift();
+  if (logVisible) appendLogDom(entry);
+}
+
+function appendLogDom(entry) {
   const node = document.createElement('div');
   const level = (entry.level || '').trim();
   node.innerHTML = '<span class="t">' + entry.time + '</span> <span class="' + level + '">' + level + '</span> ' + escapeHtml(entry.text);
@@ -903,6 +950,9 @@ initMap();
 renderTarget(true);
 renderModes();
 markClean();
+
+try { logVisible = localStorage.getItem('iap2loc.showLog') === '1'; } catch (error) { logVisible = false; }
+setLogVisible(logVisible);
 
 loadDevices();
 loadFavorites();
