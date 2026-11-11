@@ -84,7 +84,7 @@ iap2loc devices                       # list paired Bluetooth devices
 iap2loc serve --port 8737             # start the console only
 
 iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF \
-  --lat 31.2304 --lon 121.4737 --rate 1000
+  --lat 31.2304 --lon 121.4737
 
 iap2loc run --transport tcp --host 127.0.0.1 --port 12345 \
   --lat 31.2304 --lon 121.4737
@@ -99,7 +99,7 @@ Common options:
 | `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
 | `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
-| `--rate` | Update interval in ms, default 1000, minimum 200 |
+| `--rate` | Update interval in ms, default 200 |
 | `--identity` | Identity directory; without it the link and identification still work, but authentication will not |
 | `--name` / `--model` / `--serial` … | Accessory identity fields |
 | `--probe` | Exit on `0x1D02` / `0x1D03` |

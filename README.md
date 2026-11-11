@@ -83,7 +83,7 @@ iap2loc devices                       # 列出已配对的蓝牙设备
 iap2loc serve --port 8737             # 只启动控制台
 
 iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF \
-  --lat 31.2304 --lon 121.4737 --rate 1000
+  --lat 31.2304 --lon 121.4737
 
 iap2loc run --transport tcp --host 127.0.0.1 --port 12345 \
   --lat 31.2304 --lon 121.4737
@@ -98,7 +98,7 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--lat` / `--lon` | 目标坐标，默认 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
 | `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
-| `--rate` | 上报周期（毫秒），默认 1000，最小 200 |
+| `--rate` | 上报周期（毫秒），默认 200 |
 | `--identity` | 身份目录；缺省时链路与识别可用，认证不会通过 |
 | `--name` / `--model` / `--serial` … | 配件身份展示字段 |
 | `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |
