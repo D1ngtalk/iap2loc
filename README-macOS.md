@@ -52,7 +52,7 @@
 3. 在 ARM64 runner 上验证 DMG 并挂载，从 DMG 中执行 ARM64 app、测试 HTTP 控制界面与 JSON API；
 4. 上传 DMG、完整源码、校验和作为 Actions Artifacts，保留 30 天；
 5. **另一台真实 Intel GitHub-hosted runner** 下载上一步的 DMG，复验哈希、签名，并从同一 DMG 执行 Intel app 和 HTTP 测试；
-6. 仅当 GitHub 仓库推送 `v*` 版本标签，且所有测试成功时，通过工作流发布 GitHub **Prerelease**，附 DMG、源码和校验和。不在 PR 或普通分支提交时自动创建 Release。
+6. 仅当用户 Fork `shzxm/iap2loc` 推送 `v*` 版本标签，且所有测试成功时，通过工作流发布 GitHub **Prerelease**，附 DMG、源码和校验和。不在 PR 或普通分支提交时自动创建 Release。
 
 macOS 15 GitHub runner 的蓝牙硬件/iPhone 通常不可用。因此 CI 检测 DMG 可安装与可启动、正常调用程序和 Web API；不会伪称通过真实 iAP2、RFComm/MFi 连接、定位改变和授权。最终实机验收是单独的审核关口。
 

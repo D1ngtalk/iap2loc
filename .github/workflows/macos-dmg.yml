@@ -105,7 +105,7 @@ jobs:
     needs:
       - build-dmg
       - intel-smoke
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'shzxm/iap2loc' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
