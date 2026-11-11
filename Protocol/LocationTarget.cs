@@ -10,14 +10,25 @@ internal readonly record struct LocationFix(
     int Quality,
     int Satellites);
 
+/// <summary>How the target moves. Adding a mode means adding a branch in <see cref="LocationTarget.Next"/>.</summary>
+internal enum TargetMode
+{
+    Point = 0,
+    Walk = 1,
+}
+
 /// <summary>
-/// The live target shared by every running session. Changing it takes effect on the next
-/// 1 Hz tick, so the map can be clicked without reconnecting anything.
+/// The live target shared by every running session. Changing it takes effect on the next tick, so
+/// the map can be clicked without reconnecting anything.
 /// </summary>
 internal sealed class LocationTarget
 {
+    /// <summary>Refuse absurd payloads; a GPX with more vertices than this is downsampled by the UI.</summary>
+    public const int MaxRoutePoints = 20_000;
+
     private readonly object _gate = new();
 
+    private TargetMode _mode = TargetMode.Point;
     private double _latitude;
     private double _longitude;
     private double? _altitudeMeters;
@@ -32,6 +43,13 @@ internal sealed class LocationTarget
     private int _quality = 1;
     private int _satellites = 8;
 
+    private RoutePath? _route;
+    private ulong _routeSignature;
+    private double _walkSpeedMps = 1.4;
+    private bool _walkLoop = true;
+    private long _walkAnchorTicks = Environment.TickCount64;
+    private double _walkAnchorMeters;
+
     // Rolled once per target change, then reused by every fix. A point that keeps re-rolling
     // every second looks like a broken GPS, not like a real one.
     private double _resolvedLatitude;
@@ -42,6 +60,8 @@ internal sealed class LocationTarget
     {
         _latitude = latitude;
         _longitude = longitude;
+        _resolvedLatitude = latitude;
+        _resolvedLongitude = longitude;
         Resolve();
     }
 
@@ -58,11 +78,50 @@ internal sealed class LocationTarget
             var oldAccuracyMin = _accuracyMinMeters;
             var oldAccuracyMax = _accuracyMaxMeters;
 
+            var restartWalk = false;
+
+            if (update.Mode is { } mode && mode != _mode)
+            {
+                _mode = mode;
+                restartWalk = true;
+            }
+
+            if (update.Route is { } points)
+            {
+                var route = points.Count == 0
+                    ? null
+                    : new RoutePath(points.Take(MaxRoutePoints));
+
+                var signature = route?.Signature ?? 0;
+                if (signature != _routeSignature || (route?.Count ?? 0) != (_route?.Count ?? 0))
+                {
+                    _route = route;
+                    _routeSignature = signature;
+                    restartWalk = true;
+                }
+            }
+
+            if (update.WalkLoop is { } loop && loop != _walkLoop)
+            {
+                RebaseWalk();
+                _walkLoop = loop;
+            }
+
+            if (update.WalkSpeedMps is { } speed)
+            {
+                var next = Math.Clamp(speed, 0.1, 50);
+                if (Math.Abs(next - _walkSpeedMps) > 1e-9)
+                {
+                    RebaseWalk();
+                    _walkSpeedMps = next;
+                }
+            }
+
             if (update.Latitude is { } latitude) _latitude = latitude;
             if (update.Longitude is { } longitude) _longitude = longitude;
             if (update.Altitude is { } altitude) _altitudeMeters = altitude;
             if (update.Accuracy is { } accuracy) _accuracyMeters = accuracy;
-            if (update.Speed is { } speed) _speedMetersPerSecond = speed;
+            if (update.Speed is { } pointSpeed) _speedMetersPerSecond = pointSpeed;
             if (update.Bearing is { } bearing) _bearingDegrees = bearing;
             if (update.JitterPosition is { } jitterPosition) _jitterPosition = jitterPosition;
             if (update.JitterMeters is { } jitterMeters) _jitterMeters = Math.Max(0, jitterMeters);
@@ -71,6 +130,12 @@ internal sealed class LocationTarget
             if (update.AccuracyMax is { } maximum) _accuracyMaxMeters = Math.Max(_accuracyMinMeters, maximum);
             if (update.Quality is { } quality) _quality = Math.Clamp(quality, 0, 8);
             if (update.Satellites is { } satellites) _satellites = Math.Clamp(satellites, 0, 99);
+
+            if (restartWalk)
+            {
+                _walkAnchorMeters = 0;
+                _walkAnchorTicks = Environment.TickCount64;
+            }
 
             // The jitter is rolled once per real change. The UI re-sends every field on each
             // keystroke, so identical values must not re-roll behind the user's back.
@@ -81,13 +146,17 @@ internal sealed class LocationTarget
                                 Math.Abs(_accuracyMinMeters - oldAccuracyMin) > 1e-9 ||
                                 Math.Abs(_accuracyMaxMeters - oldAccuracyMax) > 1e-9;
 
-            if (positionChanged || jitterChanged)
+            if (positionChanged || jitterChanged || restartWalk)
             {
                 Resolve();
             }
-            else if (!_jitterAccuracy && _accuracyMeters != oldAccuracy)
+            else
             {
-                _resolvedAccuracyMeters = _accuracyMeters;
+                if (!_jitterAccuracy && _accuracyMeters != oldAccuracy)
+                {
+                    _resolvedAccuracyMeters = _accuracyMeters;
+                }
+
             }
         }
     }
@@ -97,24 +166,69 @@ internal sealed class LocationTarget
         lock (_gate)
         {
             return new TargetState(
+                _mode,
                 _latitude, _longitude, _altitudeMeters, _accuracyMeters, _speedMetersPerSecond, _bearingDegrees,
                 _jitterPosition, _jitterMeters, _jitterAccuracy, _accuracyMinMeters, _accuracyMaxMeters,
-                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters, _quality, _satellites);
+                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters,
+                _route?.Count ?? 0, _route?.LengthMeters ?? 0,
+                _route is null ? 0 : Travelled(),
+                _walkSpeedMps, _walkLoop, _quality, _satellites);
         }
     }
 
-    /// <summary>Next fix. The jitter was already rolled once when the target was set.</summary>
+    /// <summary>The fix for right now. Jitter was already rolled when the target was set.</summary>
     public LocationFix Next()
     {
         lock (_gate)
         {
+            if (_mode == TargetMode.Walk && _route is { IsUsable: true } route)
+            {
+                var sample = route.At(Travelled());
+                return new LocationFix(
+                    sample.Point.Latitude,
+                    sample.Point.Longitude,
+                    sample.Point.Altitude ?? _altitudeMeters,
+                    _walkSpeedMps,
+                    sample.Bearing,
+                    _resolvedAccuracyMeters,
+                    _quality,
+                    _satellites);
+            }
+
             return new LocationFix(
                 _resolvedLatitude, _resolvedLongitude, _altitudeMeters,
                 _speedMetersPerSecond, _bearingDegrees, _resolvedAccuracyMeters, _quality, _satellites);
         }
     }
 
-    /// <summary>One roll per target change: a fixed offset and a fixed accuracy for the whole stop.</summary>
+    /// <summary>Distance travelled along the route right now, wrapped when the walk loops.</summary>
+    private double Travelled()
+    {
+        if (_route is not { IsUsable: true } route)
+        {
+            return 0;
+        }
+
+        var elapsed = Math.Max(0, Environment.TickCount64 - _walkAnchorTicks) / 1000.0;
+        var distance = _walkAnchorMeters + _walkSpeedMps * elapsed;
+        var length = route.LengthMeters;
+
+        if (length <= 0)
+        {
+            return 0;
+        }
+
+        return _walkLoop ? distance % length : Math.Min(distance, length);
+    }
+
+    /// <summary>Keeps the current position when speed or looping changes mid-walk.</summary>
+    private void RebaseWalk()
+    {
+        _walkAnchorMeters = Travelled();
+        _walkAnchorTicks = Environment.TickCount64;
+    }
+
+    /// <summary>One roll per target change: a fixed offset, accuracy and altitude for the whole stop.</summary>
     private void Resolve()
     {
         _resolvedLatitude = _latitude;
@@ -126,7 +240,9 @@ internal sealed class LocationTarget
             // Uniform inside a disc, so the offset is not biased towards the centre.
             var angle = Random.Shared.NextDouble() * Math.PI * 2;
             var distance = Math.Sqrt(Random.Shared.NextDouble()) * _jitterMeters;
-            (_resolvedLatitude, _resolvedLongitude) = OffsetMeters(_latitude, _longitude, distance, angle);
+            var shifted = Geo.Offset(new GeoPoint(_latitude, _longitude), distance, angle);
+            _resolvedLatitude = shifted.Latitude;
+            _resolvedLongitude = shifted.Longitude;
         }
 
         if (_jitterAccuracy)
@@ -135,20 +251,18 @@ internal sealed class LocationTarget
             _resolvedAccuracyMeters = Math.Round(_accuracyMinMeters + Random.Shared.NextDouble() * span, 1);
         }
     }
-
-    private static (double Latitude, double Longitude) OffsetMeters(double latitude, double longitude, double distance, double angle)
-    {
-        const double metresPerDegree = 111_320.0;
-        var deltaLatitude = distance * Math.Cos(angle) / metresPerDegree;
-        var deltaLongitude = distance * Math.Sin(angle) /
-                             (metresPerDegree * Math.Max(0.01, Math.Cos(latitude * Math.PI / 180)));
-        return (latitude + deltaLatitude, longitude + deltaLongitude);
-    }
 }
 
 /// <summary>Partial update coming from the UI; every field is optional.</summary>
 internal sealed record TargetUpdate
 {
+    public TargetMode? Mode { get; init; }
+
+    /// <summary>null keeps the current route, an empty list clears it.</summary>
+    public IReadOnlyList<GeoPoint>? Route { get; init; }
+
+    public double? WalkSpeedMps { get; init; }
+    public bool? WalkLoop { get; init; }
     public double? Latitude { get; init; }
     public double? Longitude { get; init; }
     public double? Altitude { get; init; }
@@ -165,6 +279,7 @@ internal sealed record TargetUpdate
 }
 
 internal sealed record TargetState(
+    TargetMode Mode,
     double Latitude,
     double Longitude,
     double? Altitude,
@@ -179,5 +294,10 @@ internal sealed record TargetState(
     double ResolvedLatitude,
     double ResolvedLongitude,
     double? ResolvedAccuracy,
+    int RoutePoints,
+    double RouteLengthMeters,
+    double WalkTravelledMeters,
+    double WalkSpeedMps,
+    bool WalkLoop,
     int Quality,
     int Satellites);

@@ -26,6 +26,7 @@
   @media (prefers-reduced-motion: reduce) { button.primary.dirty { animation: none; } }
   button:disabled { opacity: .5; cursor: default; }
   .spacer { flex: 1; }
+  .grow { flex: 1; }
   button { font: inherit; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
   button:hover { border-color: #c9c8c2; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -37,20 +38,27 @@
   .scroll { overflow: auto; padding: 12px 14px; flex: 1; }
   section { margin-bottom: 16px; }
   section h2 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 0 0 8px; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
-  section h2 .grow { flex: 1; }
   .row { display: flex; gap: 8px; margin-bottom: 7px; align-items: center; }
+  .row.wrap { flex-wrap: wrap; }
   .row > label { width: 62px; color: var(--muted); flex: none; font-size: 12px; }
   .row > input, .row > select { flex: 1; min-width: 0; }
   input, select { font: inherit; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--text); }
   input:focus, select:focus { outline: 2px solid #cfe0f2; border-color: var(--accent); }
   input[type=checkbox] { flex: none; width: 15px; height: 15px; accent-color: var(--accent); }
-  .hint { color: var(--muted); font-size: 11.5px; margin: 2px 0 0; }
+  .compact { flex: 0 0 58px !important; min-width: 0; padding: 3px 5px; }
+  .dash { color: var(--muted); flex: none; }
+  .unit { color: var(--muted); font-size: 11.5px; flex: none; }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 2px 0 6px; }
   .readout { display: flex; justify-content: space-between; gap: 8px; font-family: ui-monospace, Consolas, monospace;
     font-size: 11.5px; padding: 3px 8px; background: #fafaf8; border: 1px solid var(--line); border-radius: 7px; margin-bottom: 5px; }
-  .readout span:first-child { color: var(--muted); }
-  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .readout span:first-child { color: var(--muted); flex: none; }
+  .readout span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
   .seg button { border: 0; border-radius: 0; padding: 5px 8px; flex: 1; background: #fff; font-size: 12px; }
   .seg button.active { background: #eaf2fb; color: var(--accent); }
+  .filebtn { display: inline-block; padding: 2px 8px; font-size: 12px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; cursor: pointer; white-space: nowrap; }
+  .filebtn:hover { border-color: #c9c8c2; }
   .item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line);
     border-radius: 8px; margin-bottom: 6px; background: #fff; }
   .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -67,6 +75,12 @@
   #log .warn { color: #e8c27a; } #log .step { color: #9cc4ea; }
   .mapnote { position: absolute; z-index: 500; left: 12px; top: 12px; background: rgba(255,255,255,.94);
     border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+  .wp span { display: block; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 10px; line-height: 18px; text-align: center; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  #toast { position: fixed; z-index: 900; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #23231f; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 12.5px;
+    max-width: 70vw; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+  #toast.error { background: var(--bad); }
 </style>
 </head>
 <body>
@@ -97,14 +111,38 @@
       </section>
 
       <section>
-        <h2>目标位置<span class="grow"></span></h2>
-        <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /></div>
-        <div class="row"><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
+        <h2>目标<span class="grow"></span></h2>
+        <div class="seg" id="modes"></div>
+
+        <div class="panel" data-panel="point">
+          <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /></div>
+          <div class="row"><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
+        </div>
+
+        <div class="panel" data-panel="walk" style="display:none">
+          <p class="hint">在地图上依次点击添加路径点；拖动序号可调整，右键删除单点。</p>
+          <div class="row wrap">
+            <span class="chip" id="routeInfo">未添加</span>
+            <span class="grow"></span>
+            <button id="routeUndo" class="mini">撤销</button>
+            <button id="routeClear" class="mini danger">清空</button>
+            <label class="filebtn">导入 GPX<input id="gpxFile" type="file" accept=".gpx,application/gpx+xml" hidden /></label>
+          </div>
+          <div class="row"><label>速度 km/h</label><input id="walkSpeed" type="number" min="0.5" step="0.5" value="5" /></div>
+          <div class="row"><label>循环</label><input id="walkLoop" type="checkbox" checked /><span class="hint" style="margin:0">到终点后从头再来</span></div>
+          <div class="readout" id="walkProgress" style="display:none"><span>已走</span><span id="walkProgressText">—</span></div>
+        </div>
+
         <div class="row"><label>精度 m</label><input id="accuracy" type="number" step="0.1" value="5" /></div>
         <div class="row"><label>高度 m</label><input id="alt" type="number" step="0.1" value="10" /></div>
+
         <div class="row"><label>随机精度</label><input id="jitterAccuracy" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
         <div class="row"><label>随机偏移</label><input id="jitterPosition" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
+        <p class="hint">随机项都在应用时取一次值，之后保持不变。</p>
+
         <div class="readout" id="resolvedRow" style="display:none"><span>实际发送</span><span id="resolvedText">—</span></div>
+        <div class="readout"><span>已应用</span><span id="appliedText">—</span></div>
+
         <div class="row" style="margin-top:6px"><button id="locate" style="flex:1" class="mini">用本机位置</button><button id="copy" style="flex:1" class="mini">复制 WGS-84</button></div>
       </section>
 
@@ -163,6 +201,8 @@
   </aside>
 </main>
 
+<div id="toast" style="display:none"></div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const PI = Math.PI, AXIS = 6378245.0, EE = 0.00669342162296594323;
@@ -201,15 +241,31 @@ function gcj2wgs(lat, lon) {
 }
 
 const el = id => document.getElementById(id);
+
+// Adding a mode = adding an entry here plus a [data-panel] block and a branch in the payload.
+const MODES = [
+  { id: 'point', label: '单点' },
+  { id: 'walk', label: '行走' }
+];
+
 const S = {
+  mode: 'point',
   target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5, quality: 1, satellites: 8,
             jitterPosition: false, jitterMeters: 10, jitterAccuracy: false,
             accuracyMin: 3, accuracyMax: 12 },
+  route: [],
+  walkSpeed: 5,
+  walkLoop: true,
   rate: 250, identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
   datum: 'wgs', sessions: [], devices: [], favorites: [], editing: false
 };
 
-let map = null, marker = null, osmLayer = null, amapLayer = null;
+let map = null, marker = null, routeLine = null, routeLayer = null, osmLayer = null, amapLayer = null;
+
+function toLatLng(point) {
+  const [lat, lon] = S.datum === 'gcj' ? wgs2gcj(point.lat, point.lon) : [point.lat, point.lon];
+  return [lat, lon];
+}
 
 function initMap() {
   if (typeof L === 'undefined') {
@@ -221,15 +277,30 @@ function initMap() {
   amapLayer = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     { subdomains: '1234', maxZoom: 18, attribution: '&copy; 高德地图' });
   osmLayer.addTo(map);
+
   marker = L.marker([S.target.lat, S.target.lon], { draggable: true }).addTo(map);
-  marker.on('dragend', () => applyPicked(marker.getLatLng().lat, marker.getLatLng().lng));
-  map.on('click', e => applyPicked(e.latlng.lat, e.latlng.lng));
+  marker.on('dragend', () => {
+    const ll = marker.getLatLng();
+    applyPicked(ll.lat, ll.lng);
+  });
+
+  map.on('click', event => addOnMap(event.latlng.lat, event.latlng.lng));
+}
+
+function addOnMap(lat, lon) {
+  const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
+  if (S.mode === 'walk') {
+    S.route.push({ lat: +wLat.toFixed(6), lon: +wLon.toFixed(6), alt: null });
+    renderRoute();
+    markDirty();
+    return;
+  }
+  applyPicked(wLat, wLon);
 }
 
 function applyPicked(lat, lon) {
-  const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
-  S.target.lat = +wLat.toFixed(6);
-  S.target.lon = +wLon.toFixed(6);
+  S.target.lat = +lat.toFixed(6);
+  S.target.lon = +lon.toFixed(6);
   renderTarget(true);
   readInputs();
   markDirty();
@@ -257,13 +328,196 @@ function setDatum(next) {
     map.setView(next === 'gcj' ? [gLat, gLon] : [S.target.lat, S.target.lon], map.getZoom());
   }
   renderTarget(false);
+  renderRoute();
 }
 document.querySelectorAll('#datum button').forEach(b => b.addEventListener('click', () => setDatum(b.dataset.datum)));
 
+/* ---------- modes ---------- */
+
+function buildModes() {
+  const box = el('modes');
+  box.innerHTML = '';
+  MODES.forEach(mode => {
+    const button = document.createElement('button');
+    button.dataset.mode = mode.id;
+    button.textContent = mode.label;
+    button.addEventListener('click', () => setMode(mode.id));
+    box.appendChild(button);
+  });
+}
+
+function setMode(next) {
+  if (next === S.mode) return;
+  S.mode = next;
+  renderModes();
+  markDirty();
+}
+
+function renderModes() {
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('active', b.dataset.mode === S.mode));
+  document.querySelectorAll('[data-panel]').forEach(panel => {
+    panel.style.display = panel.dataset.panel === S.mode ? '' : 'none';
+  });
+  if (map && marker) {
+    if (S.mode === 'point') { if (!map.hasLayer(marker)) marker.addTo(map); }
+    else if (map.hasLayer(marker)) { map.removeLayer(marker); }
+  }
+  renderRoute();
+}
+
+/* ---------- route ---------- */
+
+function waypointIcon(index) {
+  return L.divIcon({ className: 'wp', html: '<span>' + index + '</span>', iconSize: [18, 18], iconAnchor: [9, 9] });
+}
+
+function renderRoute() {
+  if (!map) { renderRouteInfo(); return; }
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+
+  if (S.mode !== 'walk' || S.route.length === 0) { renderRouteInfo(); return; }
+
+  const points = S.route.map(toLatLng);
+  if (points.length >= 2) {
+    routeLine = L.polyline(points, { color: '#185fa5', weight: 3, opacity: 0.9 }).addTo(map);
+  }
+
+  routeLayer = L.layerGroup();
+  points.forEach((latlng, index) => {
+    const node = L.marker(latlng, { draggable: true, icon: waypointIcon(index + 1) });
+    node.on('dragend', () => {
+      const position = node.getLatLng();
+      const [lat, lon] = S.datum === 'gcj' ? gcj2wgs(position.lat, position.lng) : [position.lat, position.lng];
+      S.route[index] = { ...S.route[index], lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+      renderRoute();
+      markDirty();
+    });
+    node.on('contextmenu', event => {
+      L.DomEvent.preventDefault(event.originalEvent || event);
+      S.route.splice(index, 1);
+      renderRoute();
+      markDirty();
+    });
+    routeLayer.addLayer(node);
+  });
+  routeLayer.addTo(map);
+  renderRouteInfo();
+}
+
+function renderRouteInfo() {
+  const length = routeLength();
+  el('routeInfo').textContent = S.route.length === 0
+    ? '未添加'
+    : S.route.length + ' 个点 · ' + (length / 1000).toFixed(2) + ' km';
+}
+
+function routeLength() {
+  let total = 0;
+  for (let i = 1; i < S.route.length; i++) total += distanceMeters(S.route[i - 1], S.route[i]);
+  return total;
+}
+
+function distanceMeters(a, b) {
+  const radius = 6371000, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 +
+            Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * radius * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+el('routeUndo').addEventListener('click', () => {
+  if (S.route.length === 0) return;
+  S.route.pop();
+  renderRoute();
+  markDirty();
+});
+
+el('routeClear').addEventListener('click', () => {
+  if (S.route.length === 0) return;
+  if (!confirm('清空整条路径？')) return;
+  S.route = [];
+  renderRoute();
+  markDirty();
+});
+
+el('gpxFile').addEventListener('change', async event => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+
+  let points = [];
+  try {
+    points = parseGpx(await file.text());
+  } catch (error) {
+    points = [];
+  }
+
+  if (points.length < 2) {
+    notify('这个 GPX 里没有可用的轨迹点（至少需要两个）', 'error');
+    return;
+  }
+
+  S.route = downsample(points, 5000);
+  if (S.mode !== 'walk') S.mode = 'walk';
+  renderModes();
+  fitRoute();
+  markDirty();
+  notify('已导入 ' + S.route.length + ' 个点，' + (routeLength() / 1000).toFixed(2) + ' km');
+});
+
+function parseGpx(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length > 0) return [];
+
+  const nodes = [
+    ...doc.getElementsByTagName('trkpt'),
+    ...doc.getElementsByTagName('rtept'),
+    ...doc.getElementsByTagName('wpt')
+  ];
+
+  const points = [];
+  nodes.forEach(node => {
+    const lat = parseFloat(node.getAttribute('lat'));
+    const lon = parseFloat(node.getAttribute('lon'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    let alt = null;
+    const elevation = node.getElementsByTagName('ele')[0];
+    if (elevation) {
+      const value = parseFloat(elevation.textContent);
+      if (Number.isFinite(value)) alt = value;
+    }
+
+    const last = points[points.length - 1];
+    if (last && Math.abs(last.lat - lat) < 1e-7 && Math.abs(last.lon - lon) < 1e-7) return;
+    points.push({ lat: +lat.toFixed(6), lon: +lon.toFixed(6), alt });
+  });
+
+  return points;
+}
+
+function downsample(points, limit) {
+  if (points.length <= limit) return points;
+  const step = (points.length - 1) / (limit - 1);
+  const result = [];
+  for (let i = 0; i < limit; i++) result.push(points[Math.round(i * step)]);
+  return result;
+}
+
+function fitRoute() {
+  if (!map || S.route.length < 2) return;
+  map.fitBounds(L.latLngBounds(S.route.map(toLatLng)), { padding: [40, 40] });
+}
+
+/* ---------- inputs ---------- */
+
 function readInputs() {
-  const lat = parseFloat(el('lat').value), lon = parseFloat(el('lon').value);
-  if (Number.isFinite(lat)) S.target.lat = lat;
-  if (Number.isFinite(lon)) S.target.lon = lon;
+  if (S.mode === 'point') {
+    const lat = parseFloat(el('lat').value), lon = parseFloat(el('lon').value);
+    if (Number.isFinite(lat)) S.target.lat = lat;
+    if (Number.isFinite(lon)) S.target.lon = lon;
+  }
   S.target.accuracy = num('accuracy', 5);
   S.target.alt = num('alt', 10);
   S.target.jitterAccuracy = el('jitterAccuracy').checked;
@@ -275,6 +529,8 @@ function readInputs() {
   S.target.quality = Number.isFinite(quality) ? quality : 1;
   const satellites = parseInt(el('satellites').value, 10);
   S.target.satellites = Number.isFinite(satellites) ? Math.max(0, Math.min(99, satellites)) : 8;
+  S.walkSpeed = num('walkSpeed', 5);
+  S.walkLoop = el('walkLoop').checked;
   S.rate = num('rate', 250);
   S.identity = el('identity').value.trim();
   S.transport = el('transport').value;
@@ -283,8 +539,8 @@ function readInputs() {
 }
 
 function num(id, fallback) {
-  const v = parseFloat(el(id).value);
-  return Number.isFinite(v) ? v : fallback;
+  const value = parseFloat(el(id).value);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 let dirty = false;
@@ -292,6 +548,7 @@ let dirty = false;
 function onEdited() {
   readInputs();
   renderTarget(false);
+  renderRouteInfo();
   markDirty();
 }
 
@@ -310,24 +567,40 @@ function markClean() {
   el('dirtyChip').style.display = 'none';
 }
 
-async function applyTarget() {
+function buildPayload(tolerateEmptyRoute) {
+  const mode = S.mode === 'walk' && tolerateEmptyRoute && S.route.length < 2 ? 'point' : S.mode;
+  return {
+    mode,
+    latitude: S.target.lat, longitude: S.target.lon,
+    altitude: S.target.alt, accuracy: S.target.accuracy,
+    jitterPosition: S.target.jitterPosition, jitterMeters: S.target.jitterMeters,
+    jitterAccuracy: S.target.jitterAccuracy, accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax,
+    quality: S.target.quality, satellites: S.target.satellites,
+    rate: S.rate,
+    walkSpeedKmh: S.walkSpeed, walkLoop: S.walkLoop,
+    route: mode === 'walk'
+      ? S.route.map(point => ({ latitude: point.lat, longitude: point.lon, altitude: point.alt }))
+      : null
+  };
+}
+
+async function applyTarget(options = {}) {
   readInputs();
   renderTarget(false);
-  const result = await postJson('/api/target', {
-    latitude: S.target.lat, longitude: S.target.lon, altitude: S.target.alt,
-    accuracy: S.target.accuracy, jitterPosition: S.target.jitterPosition,
-    jitterMeters: S.target.jitterMeters, jitterAccuracy: S.target.jitterAccuracy,
-    accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax, rate: S.rate,
-    quality: S.target.quality, satellites: S.target.satellites
-  });
 
+  if (S.mode === 'walk' && S.route.length < 2 && !options.tolerateEmptyRoute) {
+    notify('行走模式至少需要两个路径点，或导入一条 GPX', 'error');
+    return false;
+  }
+
+  const result = await postJson('/api/target', buildPayload(options.tolerateEmptyRoute));
   if (result && result.ok) {
-    if (result.target) updateResolved(result.target);
+    if (result.target) { updateResolved(result.target); renderApplied(result.target); }
     markClean();
     return true;
   }
 
-  appendLog({ time: '', level: 'error', text: (result && result.error) || '应用失败' });
+  notify((result && result.error) || '应用失败', 'error');
   return false;
 }
 
@@ -335,42 +608,90 @@ function updateResolved(target) {
   const active = target.jitterPosition || target.jitterAccuracy;
   el('resolvedRow').style.display = active ? 'flex' : 'none';
   if (!active) return;
-  const accuracy = target.resolvedAccuracy == null ? '—' : target.resolvedAccuracy.toFixed(1) + ' m';
-  el('resolvedText').textContent =
-    target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6) + ' · ' + accuracy;
+
+  const parts = [];
+  if (target.mode !== 'walk') {
+    parts.push(target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6));
+  }
+  if (target.resolvedAccuracy != null) parts.push(target.resolvedAccuracy.toFixed(1) + ' m 精度');
+  el('resolvedText').textContent = parts.join(' · ');
 }
 
-['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','rate','satellites'].forEach(id => {
+function renderApplied(target) {
+  if (!target) return;
+  if (target.mode === 'walk' && target.routePoints >= 2) {
+    el('appliedText').textContent = '行走 · ' + target.routePoints + ' 点 / ' +
+      (target.routeLengthMeters / 1000).toFixed(2) + ' km · 已走 ' + Math.round(target.walkTravelledMeters) + ' m';
+    el('walkProgress').style.display = 'flex';
+    el('walkProgressText').textContent = Math.round(target.walkTravelledMeters) + ' / ' +
+      Math.round(target.routeLengthMeters) + ' m';
+  } else {
+    el('appliedText').textContent = '单点 · ' + target.latitude.toFixed(6) + ', ' + target.longitude.toFixed(6);
+    el('walkProgress').style.display = 'none';
+  }
+}
+
+['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','walkSpeed','rate','satellites'].forEach(id => {
   el(id).addEventListener('input', onEdited);
 });
 el('quality').addEventListener('change', onEdited);
-['jitterAccuracy','jitterPosition'].forEach(id => {
+['jitterAccuracy','jitterPosition','walkLoop'].forEach(id => {
   el(id).addEventListener('change', onEdited);
 });
 
-el('apply').addEventListener('click', applyTarget);
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
+el('apply').addEventListener('click', () => applyTarget());
+document.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
     if (dirty) applyTarget();
   }
 });
+
 el('transport').addEventListener('change', () => {
-  const bt = el('transport').value === 'bt';
-  el('rowHost').style.display = bt ? 'none' : 'flex';
-  el('rowPort').style.display = bt ? 'none' : 'flex';
+  const bluetooth = el('transport').value === 'bt';
+  el('rowHost').style.display = bluetooth ? 'none' : 'flex';
+  el('rowPort').style.display = bluetooth ? 'none' : 'flex';
   renderDevices();
 });
 
+/* ---------- log ---------- */
+
+function appendLog(entry) {
+  const node = document.createElement('div');
+  const level = (entry.level || '').trim();
+  node.innerHTML = '<span class="t">' + entry.time + '</span> <span class="' + level + '">' + level + '</span> ' + escapeHtml(entry.text);
+  const log = el('log');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  log.appendChild(node);
+  if (atBottom) log.scrollTop = log.scrollHeight;
+  while (log.childElementCount > 400) log.removeChild(log.firstChild);
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+let toastTimer = null;
+function notify(text, level) {
+  const toast = el('toast');
+  toast.textContent = text;
+  toast.className = level === 'error' ? 'error' : '';
+  toast.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 4000);
+}
+
+/* ---------- api ---------- */
+
 async function postJson(path, body) {
   try {
-    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return await r.json();
-  } catch (e) { return { ok: false, error: String(e) }; }
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return await response.json();
+  } catch (error) { return { ok: false, error: String(error) }; }
 }
 
 async function getJson(path) {
-  try { return await (await fetch(path)).json(); } catch (e) { return null; }
+  try { return await (await fetch(path)).json(); } catch (error) { return null; }
 }
 
 async function loadDevices() {
@@ -382,14 +703,14 @@ async function loadDevices() {
 
 function renderDevices() {
   const showAll = el('showAll').checked;
-  const list = S.devices.filter(d => showAll || d.likelyApple);
+  const list = S.devices.filter(device => showAll || device.likelyApple);
   const select = el('deviceSelect');
   if (list.length === 0) {
     select.innerHTML = '<option value="">' + (S.devices.length ? '没有 Apple 设备（可勾选显示全部）' : '没有已配对设备') + '</option>';
     return;
   }
-  select.innerHTML = list.map(d =>
-    '<option value="' + d.address + '">' + d.name + ' · ' + d.address + (d.likelyApple ? '' : ' · 其他') + '</option>'
+  select.innerHTML = list.map(device =>
+    '<option value="' + device.address + '">' + device.name + ' · ' + device.address + (device.likelyApple ? '' : ' · 其他') + '</option>'
   ).join('');
 }
 
@@ -398,21 +719,21 @@ el('showAll').addEventListener('change', renderDevices);
 
 el('addDevice').addEventListener('click', async () => {
   readInputs();
-  const bt = S.transport === 'bt';
+  const bluetooth = S.transport === 'bt';
   const mac = el('deviceSelect').value;
-  if (bt && !mac) { appendLog({ time: '', level: 'error', text: '请先选择设备' }); return; }
+  if (bluetooth && !mac) { notify('请先选择设备', 'error'); return; }
 
   // A new device must start from the point on screen, so apply pending edits first.
-  if (!(await applyTarget())) return;
+  if (!(await applyTarget({ tolerateEmptyRoute: true }))) return;
 
   const option = el('deviceSelect').selectedOptions[0];
   const result = await postJson('/api/sessions', {
-    transport: S.transport, mac: bt ? mac : null,
-    host: bt ? null : S.host, port: bt ? null : S.port,
+    transport: S.transport, mac: bluetooth ? mac : null,
+    host: bluetooth ? null : S.host, port: bluetooth ? null : S.port,
     identity: S.identity, rate: S.rate,
-    label: bt ? (option ? option.textContent.split(' · ')[0] : mac) : (S.host + ':' + S.port)
+    label: bluetooth ? (option ? option.textContent.split(' · ')[0] : mac) : (S.host + ':' + S.port)
   });
-  if (!result.ok) appendLog({ time: '', level: 'error', text: result.error || '添加失败' });
+  if (!result.ok) notify(result.error || '添加失败', 'error');
   pollState();
 });
 
@@ -448,20 +769,20 @@ el('favorite').addEventListener('click', async () => {
 
 el('locate').addEventListener('click', () => {
   if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(p => {
-    S.target.lat = +p.coords.latitude.toFixed(6);
-    S.target.lon = +p.coords.longitude.toFixed(6);
-    if (Number.isFinite(p.coords.altitude)) { S.target.alt = +p.coords.altitude.toFixed(1); el('alt').value = S.target.alt; }
-    if (Number.isFinite(p.coords.accuracy)) { S.target.accuracy = Math.max(1, +p.coords.accuracy.toFixed(1)); el('accuracy').value = S.target.accuracy; }
+  navigator.geolocation.getCurrentPosition(position => {
+    S.target.lat = +position.coords.latitude.toFixed(6);
+    S.target.lon = +position.coords.longitude.toFixed(6);
+    if (Number.isFinite(position.coords.altitude)) { S.target.alt = +position.coords.altitude.toFixed(1); el('alt').value = S.target.alt; }
+    if (Number.isFinite(position.coords.accuracy)) { S.target.accuracy = Math.max(1, +position.coords.accuracy.toFixed(1)); el('accuracy').value = S.target.accuracy; }
     renderTarget(true);
     readInputs();
     markDirty();
     if (map) map.setView(S.datum === 'gcj' ? wgs2gcj(S.target.lat, S.target.lon) : [S.target.lat, S.target.lon], 15);
-  }, () => appendLog({ time: '', level: 'warn', text: '浏览器拒绝或无法取得本机位置' }));
+  }, () => notify('浏览器拒绝或无法取得本机位置', 'error'));
 });
 
 el('copy').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(S.target.lat.toFixed(6) + ',' + S.target.lon.toFixed(6)); } catch {}
+  try { await navigator.clipboard.writeText(S.target.lat.toFixed(6) + ',' + S.target.lon.toFixed(6)); } catch (error) { }
 });
 
 async function loadFavorites() {
@@ -470,18 +791,18 @@ async function loadFavorites() {
   const box = el('favorites');
   if (S.favorites.length === 0) { box.innerHTML = '<p class="hint">点右上角「收藏当前」保存坐标。</p>'; return; }
   box.innerHTML = '';
-  S.favorites.forEach(f => {
+  S.favorites.forEach(favorite => {
     const row = document.createElement('div');
     row.className = 'item';
-    row.dataset.id = f.id;
-    row.dataset.lat = f.latitude;
-    row.dataset.lon = f.longitude;
-    row.dataset.alt = f.altitude == null ? '' : f.altitude;
-    row.dataset.accuracy = f.accuracy == null ? '' : f.accuracy;
+    row.dataset.id = favorite.id;
+    row.dataset.lat = favorite.latitude;
+    row.dataset.lon = favorite.longitude;
+    row.dataset.alt = favorite.altitude == null ? '' : favorite.altitude;
+    row.dataset.accuracy = favorite.accuracy == null ? '' : favorite.accuracy;
     row.style.cursor = 'pointer';
-    row.innerHTML = '<div class="name">' + escapeHtml(f.name) + '<div class="sub">' +
-      f.latitude.toFixed(5) + ', ' + f.longitude.toFixed(5) + '</div></div>' +
-      '<button class="mini danger" data-remove="' + f.id + '">✕</button>';
+    row.innerHTML = '<div class="name">' + escapeHtml(favorite.name) + '<div class="sub">' +
+      favorite.latitude.toFixed(5) + ', ' + favorite.longitude.toFixed(5) + '</div></div>' +
+      '<button class="mini danger" data-remove="' + favorite.id + '">✕</button>';
     box.appendChild(row);
   });
 }
@@ -490,15 +811,15 @@ function renderSessions() {
   const box = el('sessions');
   if (S.sessions.length === 0) { box.innerHTML = '<p class="hint">尚未添加设备。</p>'; return; }
   box.innerHTML = '';
-  S.sessions.forEach(s => {
+  S.sessions.forEach(session => {
     const row = document.createElement('div');
     row.className = 'item';
-    const linkClass = s.link === 'Normal' ? 'ok' : (s.running ? 'warn' : 'bad');
+    const linkClass = session.link === 'Normal' ? 'ok' : (session.running ? 'warn' : 'bad');
     row.innerHTML =
       '<span class="dot ' + linkClass + '"></span>' +
-      '<div class="name">' + escapeHtml(s.label) + '<div class="sub">' + escapeHtml(s.address || '') + '</div></div>' +
-      '<span class="sub">' + (s.authenticated ? '认证' : '未认证') + ' · ' + s.sent + '</span>' +
-      '<button class="mini danger" data-remove="' + s.id + '">✕</button>';
+      '<div class="name">' + escapeHtml(session.label) + '<div class="sub">' + escapeHtml(session.address || '') + '</div></div>' +
+      '<span class="sub">' + (session.authenticated ? '认证' : '未认证') + ' · ' + session.sent + '</span>' +
+      '<button class="mini danger" data-remove="' + session.id + '">✕</button>';
     box.appendChild(row);
   });
 }
@@ -537,21 +858,13 @@ async function pollState() {
   const state = await getJson('/api/state');
   if (!state) return;
   pillState(state);
-  if (state.target) updateResolved(state.target);
+  if (state.target) {
+    updateResolved(state.target);
+    renderApplied(state.target);
+  }
 }
 
 let lastLog = 0;
-function appendLog(entry) {
-  const node = document.createElement('div');
-  const level = (entry.level || '').trim();
-  node.innerHTML = '<span class="t">' + entry.time + '</span> <span class="' + level + '">' + level + '</span> ' + escapeHtml(entry.text);
-  const log = el('log');
-  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
-  log.appendChild(node);
-  if (atBottom) log.scrollTop = log.scrollHeight;
-  while (log.childElementCount > 400) log.removeChild(log.firstChild);
-}
-function escapeHtml(t) { return String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
 async function pollLog() {
   const data = await getJson('/api/log?since=' + lastLog);
@@ -560,20 +873,20 @@ async function pollLog() {
   (data.entries || []).forEach(appendLog);
 }
 
-el('sessions').addEventListener('click', e => {
-  const button = e.target.closest('button[data-remove]');
+el('sessions').addEventListener('click', event => {
+  const button = event.target.closest('button[data-remove]');
   if (button) removeSession(button.dataset.remove);
 });
 
-el('favorites').addEventListener('click', async e => {
-  const button = e.target.closest('button[data-remove]');
+el('favorites').addEventListener('click', async event => {
+  const button = event.target.closest('button[data-remove]');
   if (button) {
     await postJson('/api/favorites/remove', { id: button.dataset.remove });
     loadFavorites();
     return;
   }
 
-  const row = e.target.closest('.item');
+  const row = event.target.closest('.item');
   if (!row) return;
   S.target.lat = parseFloat(row.dataset.lat);
   S.target.lon = parseFloat(row.dataset.lon);
@@ -585,9 +898,12 @@ el('favorites').addEventListener('click', async e => {
   if (map) map.setView(S.datum === 'gcj' ? wgs2gcj(S.target.lat, S.target.lon) : [S.target.lat, S.target.lon], map.getZoom());
 });
 
+buildModes();
 initMap();
 renderTarget(true);
+renderModes();
 markClean();
+
 loadDevices();
 loadFavorites();
 pollState();

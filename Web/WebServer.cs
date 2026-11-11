@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Iap2Loc.Engine;
 using Iap2Loc.Protocol;
 using Iap2Loc.Transport;
@@ -19,6 +20,7 @@ internal sealed class WebServer : IDisposable
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private readonly TcpListener _listener;
@@ -399,6 +401,10 @@ internal sealed class WebServer : IDisposable
 
     private sealed class TargetPayload
     {
+        public string? Mode { get; set; }
+        public List<RoutePointPayload>? Route { get; set; }
+        public double? WalkSpeedKmh { get; set; }
+        public bool? WalkLoop { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
@@ -416,6 +422,10 @@ internal sealed class WebServer : IDisposable
 
         public TargetUpdate ToUpdate() => new()
         {
+            Mode = ParseMode(Mode),
+            Route = ParseRoute(Route),
+            WalkSpeedMps = WalkSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.1, 180) / 3.6 : null,
+            WalkLoop = WalkLoop,
             Latitude = Latitude,
             Longitude = Longitude,
             Altitude = Altitude,
@@ -430,6 +440,54 @@ internal sealed class WebServer : IDisposable
             Quality = Quality,
             Satellites = Satellites,
         };
+
+        private static TargetMode? ParseMode(string? text) => text?.Trim().ToLowerInvariant() switch
+        {
+            "walk" or "route" => TargetMode.Walk,
+            "point" or "single" => TargetMode.Point,
+            _ => null,
+        };
+
+        /// <summary>null keeps the current route; an empty array clears it.</summary>
+        private static IReadOnlyList<GeoPoint>? ParseRoute(List<RoutePointPayload>? points)
+        {
+            if (points is null)
+            {
+                return null;
+            }
+
+            var parsed = new List<GeoPoint>(Math.Min(points.Count, LocationTarget.MaxRoutePoints));
+            foreach (var point in points)
+            {
+                if (point.Latitude is not { } latitude || point.Longitude is not { } longitude)
+                {
+                    continue;
+                }
+
+                if (double.IsNaN(latitude) || double.IsNaN(longitude) ||
+                    Math.Abs(latitude) > 90 || Math.Abs(longitude) > 180)
+                {
+                    continue;
+                }
+
+                var altitude = point.Altitude is { } value && !double.IsNaN(value) ? value : (double?)null;
+                parsed.Add(new GeoPoint(latitude, longitude, altitude));
+
+                if (parsed.Count >= LocationTarget.MaxRoutePoints)
+                {
+                    break;
+                }
+            }
+
+            return parsed;
+        }
+    }
+
+    private sealed class RoutePointPayload
+    {
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public double? Altitude { get; set; }
     }
 
     private sealed class StartSessionPayload
