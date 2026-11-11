@@ -27,8 +27,8 @@ concurrency:
 
 jobs:
   build-dmg:
-    name: Build DMG + ARM64 smoke test
-    runs-on: macos-15
+    name: Build dual-architecture DMG + Intel x64 smoke test
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
       - name: Checkout full source history
@@ -41,12 +41,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Validate Apple Silicon build host
+      - name: Validate Intel build host
         shell: bash
         run: |
           set -euo pipefail
           uname -m
-          test "$(uname -m)" = arm64
+          test "$(uname -m)" = x86_64
           xcrun --find clang
           dotnet --info
 
@@ -56,13 +56,13 @@ jobs:
       - name: Build signed apps and DMG
         run: bash scripts/package-macos.sh
 
-      - name: Mount and smoke-test ARM64 DMG app
+      - name: Mount and smoke-test Intel x64 DMG app
         shell: bash
         run: |
           set -euo pipefail
           DMG="$(find releases -type f -name 'iap2loc-macOS-Bluetooth-*.dmg' | head -1)"
           test -n "$DMG"
-          bash scripts/smoke-macos.sh "$DMG" arm64
+          bash scripts/smoke-macos.sh "$DMG" x64
 
       - name: Upload verified DMG, source and checksums
         uses: actions/upload-artifact@v4
@@ -76,10 +76,10 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-  intel-smoke:
-    name: Intel x64 DMG smoke test
+  arm64-smoke:
+    name: Apple Silicon ARM64 DMG smoke test
     needs: build-dmg
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Checkout test script
@@ -91,20 +91,20 @@ jobs:
           name: iap2loc-macos-dmg
           path: package
 
-      - name: Mount and smoke-test Intel app
+      - name: Mount and smoke-test ARM64 app
         shell: bash
         run: |
           set -euo pipefail
-          test "$(uname -m)" = x86_64
+          test "$(uname -m)" = arm64
           DMG="$(find package -type f -name 'iap2loc-macOS-Bluetooth-*.dmg' | head -1)"
           test -n "$DMG"
-          bash scripts/smoke-macos.sh "$DMG" x64
+          bash scripts/smoke-macos.sh "$DMG" arm64
 
   release:
     name: Publish prerelease on version tag
     needs:
       - build-dmg
-      - intel-smoke
+      - arm64-smoke
     if: github.repository == 'shzxm/iap2loc' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
