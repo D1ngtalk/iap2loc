@@ -99,8 +99,9 @@ internal sealed class RunSession : IDisposable
 
                 _transport = _request.Transport.ToLowerInvariant() switch
                 {
-                    "bt" or "bluetooth" => BtRfcommTransport.Connect(
-                        _request.Mac ?? throw new ArgumentException("缺少蓝牙地址")),
+                    "bt" or "bluetooth" => OperatingSystem.IsMacOS()
+                        ? MacBtRfcommTransport.Connect(_request.Mac ?? throw new ArgumentException("缺少蓝牙地址"))
+                        : BtRfcommTransport.Connect(_request.Mac ?? throw new ArgumentException("缺少蓝牙地址")),
                     "tcp" or "wifi" => TcpTransport.Connect(
                         _request.Host ?? "127.0.0.1",
                         _request.Port > 0 ? _request.Port : throw new ArgumentException("缺少 TCP 端口")),

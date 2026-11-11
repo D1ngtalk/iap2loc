@@ -7,6 +7,9 @@ Release/
 *.user
 .idea/
 .vs/
+.DS_Store
+releases/
+Native/*.dylib
 
 # MFi 身份材料：私钥与证书链，任何情况下都不要提交
 identity.pk8

@@ -1,0 +1,49 @@
+name: Build macOS Bluetooth DMG
+
+on:
+  push:
+    branches:
+      - feature/macos-iobluetooth-rfcomm-dmg
+  pull_request:
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - 'Native/**'
+      - 'scripts/**'
+      - '.github/workflows/macos-dmg.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  macos-dmg:
+    name: Build macOS app and DMG
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and package
+        run: bash scripts/package-macos.sh
+      - name: Validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f releases/iap2loc-macos-bt-*/iap2loc-macOS-Bluetooth-*.dmg
+          test -f releases/iap2loc-macos-bt-*/source.tar.gz
+          file releases/iap2loc-macos-bt-*/dmg-root/*.app/Contents/MacOS/iap2loc
+          for app in releases/iap2loc-macos-bt-*/dmg-root/*.app; do
+            codesign --verify --deep --strict "$app"
+          done
+      - name: Upload macOS DMG and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap2loc-macos-bluetooth
+          path: |
+            releases/iap2loc-macos-bt-*/*.dmg
+            releases/iap2loc-macos-bt-*/source.tar.gz
+            releases/iap2loc-macos-bt-*/SHA256SUMS
+          if-no-files-found: error

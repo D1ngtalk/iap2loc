@@ -30,6 +30,9 @@ internal sealed class BtRfcommTransport : ITransport
 
     public static BtRfcommTransport Connect(string mac, int timeoutSeconds = 20)
     {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("当前 RFCOMM 实现依赖 Windows Winsock/Bluetooth API；macOS 版本仅支持 TCP 传输，蓝牙需要单独适配 IOBluetooth。");
+
         var normalized = Normalize(mac);
         if (Ws2_32.WSAStartup(0x0202, new byte[512]) != 0)
         {
