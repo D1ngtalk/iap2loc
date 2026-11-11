@@ -126,7 +126,7 @@
       <section>
         <details>
           <summary>高级设置</summary>
-          <div class="row"><label>周期 ms</label><input id="rate" type="number" min="10" step="10" value="100" /></div>
+          <div class="row"><label>周期 ms</label><input id="rate" type="number" min="10" step="10" value="250" /></div>
           <div class="row"><label>句子集</label>
             <select id="sentences">
               <option value="gga,rmc">GGA + RMC</option>
@@ -194,7 +194,7 @@ const S = {
   target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5,
             jitterPosition: false, jitterMeters: 10, jitterAccuracy: false,
             accuracyMin: 3, accuracyMax: 12 },
-  rate: 100, sentences: 'gga,rmc', identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
+  rate: 250, sentences: 'gga,rmc', identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
   datum: 'wgs', sessions: [], devices: [], favorites: [], editing: false
 };
 
@@ -260,7 +260,7 @@ function readInputs() {
   S.target.accuracyMin = num('accuracyMin', 3);
   S.target.accuracyMax = num('accuracyMax', 12);
   S.target.jitterMeters = num('jitterMeters', 10);
-  S.rate = num('rate', 100);
+  S.rate = num('rate', 250);
   S.sentences = el('sentences').value;
   S.identity = el('identity').value.trim();
   S.transport = el('transport').value;

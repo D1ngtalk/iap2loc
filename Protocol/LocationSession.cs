@@ -18,10 +18,16 @@ internal sealed class LocationSession : IDisposable
     private readonly object _timerGate = new();
     private Timer? _timer;
     private volatile bool _subscribed;
+    private volatile Subscription? _subscription;
+    private readonly Dictionary<int, long> _lastSent = new();
+    private readonly object _pushGate = new();
     private int _intervalMs;
     private NmeaSentences _sentences;
     private int _pushed;
     private bool _disposed;
+
+    /// <summary>What the phone asked for in 0xFFFA: sentence ids 1/2 and optional periods.</summary>
+    private sealed record Subscription(HashSet<int> Sentences, Dictionary<int, int> RequestedMs);
 
     public LocationSession(
         Iap2Link link,
@@ -64,8 +70,7 @@ internal sealed class LocationSession : IDisposable
             _intervalMs = next;
             if (_timer is not null)
             {
-                _timer.Dispose();
-                _timer = new Timer(_ => Push(), null, 0, _intervalMs);
+                try { _timer.Change(0, Timeout.Infinite); } catch (ObjectDisposedException) { }
             }
         }
     }
@@ -132,13 +137,17 @@ internal sealed class LocationSession : IDisposable
                     break;
 
                 case 0xFFFA:
+                    _subscription = ParseSubscription(parameters);
+                    _lastSent.Clear();
                     _subscribed = true;
-                    Log.Ok($"rx 0xFFFA StartLocationInformation, components=[{string.Join(", ", parameters.Keys.Order())}]");
+                    Log.Ok($"rx 0xFFFA StartLocationInformation, {Describe(_subscription)}");
                     StartTimer();
+                    RestartTimer();
                     break;
 
                 case 0xFFFC:
                     _subscribed = false;
+                    _subscription = null;
                     Log.Info("rx 0xFFFC StopLocationInformation");
                     StopTimer();
                     break;
@@ -169,8 +178,8 @@ internal sealed class LocationSession : IDisposable
             }
 
             var state = _target.Snapshot();
-            Log.Info($"streaming {_intervalMs} ms NMEA for {state.Latitude:F6},{state.Longitude:F6}");
-            _timer = new Timer(_ => Push(), null, 0, _intervalMs);
+            Log.Info($"streaming {PlannedInterval()} ms NMEA for {state.Latitude:F6},{state.Longitude:F6}");
+            _timer = new Timer(_ => Push(), null, 0, Timeout.Infinite);
         }
     }
 
@@ -185,42 +194,218 @@ internal sealed class LocationSession : IDisposable
 
     private void Push()
     {
-        if (_disposed || !_subscribed || _link.State != LinkState.Normal)
-        {
-            return;
-        }
-
         try
         {
-            var now = DateTime.UtcNow;
-            var fix = _target.Next();
-
-            var nmea = Nmea.Encode(
-                fix.Latitude,
-                fix.Longitude,
-                fix.AltitudeMeters,
-                fix.BearingDegrees,
-                fix.SpeedMetersPerSecond,
-                fix.AccuracyMeters,
-                now,
-                _sentences);
-
-            _link.Send(0xFFFB, Csm.Param(0, Encoding.UTF8.GetBytes(nmea + "\0")));
-
-            var count = Interlocked.Increment(ref _pushed);
-            if (count == 1 || count % 30 == 0)
+            if (_disposed || !_subscribed || _link.State != LinkState.Normal)
             {
-                Log.Trace($"tx 0xFFFB #{count} {nmea.Split("\r\n")[0]}");
+                return;
+            }
+
+            lock (_pushGate)
+            {
+                var now = DateTime.UtcNow;
+                var fix = _target.Next();
+                var subscription = _subscription;
+
+                var nmea = Nmea.Encode(
+                    fix.Latitude,
+                    fix.Longitude,
+                    fix.AltitudeMeters,
+                    fix.BearingDegrees,
+                    fix.SpeedMetersPerSecond,
+                    fix.AccuracyMeters,
+                    now,
+                    _sentences);
+
+                var parameters = new List<byte[]>();
+                var sent = new List<int>();
+                var tick = Environment.TickCount64;
+
+                foreach (var sentence in nmea.Split("\r\n", StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var id = SentenceId(sentence);
+                    if (id != 0 && subscription is { Sentences.Count: > 0 } && !subscription.Sentences.Contains(id))
+                    {
+                        continue;
+                    }
+
+                    if (!Due(subscription, id, tick))
+                    {
+                        continue;
+                    }
+
+                    parameters.Add(Csm.Param(0, Encoding.UTF8.GetBytes(sentence + "\r\n\0")));
+                    sent.Add(id);
+                }
+
+                if (parameters.Count == 0)
+                {
+                    return;
+                }
+
+                _link.Send(0xFFFB, parameters.ToArray());
+                foreach (var id in sent)
+                {
+                    _lastSent[id] = tick;
+                }
+
+                var count = Interlocked.Increment(ref _pushed);
+                if (count == 1 || count % 30 == 0)
+                {
+                    Log.Trace($"tx 0xFFFB #{count} {parameters.Count} sentence(s), first: {nmea.Split("\r\n")[0]}");
+                }
             }
         }
         catch (Exception ex)
         {
             Log.Warn($"sending 0xFFFB failed: {ex.Message}");
         }
+        finally
+        {
+            Rearm();
+        }
+    }
+
+    /// <summary>A sentence is due when its own period elapsed; the device period wins when it asked for one.</summary>
+    private bool Due(Subscription? subscription, int sentenceId, long now)
+    {
+        if (!_lastSent.TryGetValue(sentenceId, out var last))
+        {
+            return true;
+        }
+
+        return now - last >= EffectiveInterval(subscription, sentenceId);
+    }
+
+    private int EffectiveInterval(Subscription? subscription, int sentenceId) =>
+        subscription is not null &&
+        subscription.RequestedMs.TryGetValue(sentenceId, out var requested) &&
+        requested > 0
+            ? requested
+            : _intervalMs;
+
+    /// <summary>Logging only: the cadence the device asked for, or our own interval.</summary>
+    private int PlannedInterval()
+    {
+        var subscription = _subscription;
+        if (subscription is null)
+        {
+            return _intervalMs;
+        }
+
+        var fastest = int.MaxValue;
+        foreach (var id in TrackedSentences(subscription))
+        {
+            fastest = Math.Min(fastest, EffectiveInterval(subscription, id));
+        }
+
+        return fastest == int.MaxValue ? _intervalMs : fastest;
+    }
+
+    /// <summary>One-shot timer: wake up exactly when the next sentence is due, then rearm.</summary>
+    private int NextDelay()
+    {
+        var subscription = _subscription;
+        if (subscription is null)
+        {
+            return _intervalMs;
+        }
+
+        var now = Environment.TickCount64;
+        var soonest = int.MaxValue;
+        foreach (var id in TrackedSentences(subscription))
+        {
+            var interval = EffectiveInterval(subscription, id);
+            var elapsed = _lastSent.TryGetValue(id, out var last) ? now - last : interval;
+            soonest = Math.Min(soonest, interval - (int)elapsed);
+        }
+
+        return soonest == int.MaxValue ? _intervalMs : Math.Max(10, soonest);
+    }
+
+    private static int[] TrackedSentences(Subscription subscription) =>
+        subscription.Sentences.Count > 0 ? subscription.Sentences.ToArray() : new[] { 1, 2 };
+
+    private void RestartTimer()
+    {
+        lock (_timerGate)
+        {
+            if (_timer is null)
+            {
+                return;
+            }
+
+            try { _timer.Change(0, Timeout.Infinite); } catch (ObjectDisposedException) { }
+        }
+    }
+
+    private void Rearm()
+    {
+        lock (_timerGate)
+        {
+            if (_timer is null || _disposed)
+            {
+                return;
+            }
+
+            try { _timer.Change(NextDelay(), Timeout.Infinite); } catch (ObjectDisposedException) { }
+        }
     }
 
     private static string Describe(IReadOnlyDictionary<int, byte[]> parameters) =>
         string.Join(", ", parameters.Select(pair => $"{pair.Key}:{pair.Value.Length}B"));
+
+    /// <summary>
+    /// 0xFFFA carries the sentence ids it wants as empty parameters 1 (GGA) and 2 (RMC);
+    /// 0x8001 / 0x8002 are the matching periods in milliseconds. A period the device asks for
+    /// overrides the configured interval; the configured value only applies when it asks for none.
+    /// </summary>
+    private static Subscription ParseSubscription(IReadOnlyDictionary<int, byte[]> parameters)
+    {
+        var sentences = new HashSet<int>();
+        var periods = new Dictionary<int, int>();
+
+        foreach (var (id, data) in parameters)
+        {
+            if (id is 1 or 2 && data.Length == 0)
+            {
+                sentences.Add(id);
+            }
+            else if (id is 0x8001 or 0x8002 && data.Length == 4)
+            {
+                var milliseconds = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+                if (milliseconds > 0)
+                {
+                    periods[id - 0x8000] = milliseconds;
+                }
+            }
+        }
+
+        return new Subscription(sentences, periods);
+    }
+
+    private string Describe(Subscription subscription)
+    {
+        var known = new[] { (Id: 1, Name: "gga"), (Id: 2, Name: "rmc") };
+        var sentences = subscription.Sentences.Count == 0
+            ? "all"
+            : string.Join(",", known.Where(item => subscription.Sentences.Contains(item.Id)).Select(item => item.Name));
+        var periods = subscription.RequestedMs.Count == 0
+            ? "none"
+            : string.Join(",", known.Where(item => subscription.RequestedMs.ContainsKey(item.Id))
+                .Select(item => $"{item.Name} {subscription.RequestedMs[item.Id]}ms"));
+
+        return $"sentences=[{sentences}], requested=[{periods}], sending every {PlannedInterval()} ms";
+    }
+
+    private static int SentenceId(string sentence) =>
+        sentence.StartsWith("$GPGGA", StringComparison.Ordinal) ||
+        sentence.StartsWith("$GNGGA", StringComparison.Ordinal)
+            ? 1
+            : sentence.StartsWith("$GPRMC", StringComparison.Ordinal) ||
+              sentence.StartsWith("$GNRMC", StringComparison.Ordinal)
+                ? 2
+                : 0;
 
     /// <summary>Maps the parameter ids iOS quotes in 0x1D03 to the thing that is usually wrong.</summary>
     private static string Hint(IReadOnlyDictionary<int, byte[]> parameters)

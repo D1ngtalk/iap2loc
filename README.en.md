@@ -71,7 +71,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## Usage
 
-The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, identity directory, transport and randomization all live under **Advanced**. To start only the console:
+The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, identity directory, transport and randomization all live under **Advanced**. When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
 
 ```bash
 iap2loc serve --port 8737
@@ -99,7 +99,7 @@ Common options:
 | `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
 | `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
-| `--rate` | Update interval in ms, default 100, minimum 10 |
+| `--rate` | Update interval in ms, default 250, minimum 10 |
 | `--identity` | Identity directory; without it the link and identification still work, but authentication will not |
 | `--name` / `--model` / `--serial` … | Accessory identity fields |
 | `--probe` | Exit on `0x1D02` / `0x1D03` |

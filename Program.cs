@@ -202,7 +202,7 @@ internal static class Program
             Accuracy = options.NullableDouble("accuracy"),
         });
 
-        var rate = Math.Max(10, options.Int("rate", 100));
+        var rate = Math.Max(10, options.Int("rate", 250));
 
         using var link = new Iap2Link(transport, initiate: true, "accessory");
         using var session = new LocationSession(
@@ -383,7 +383,7 @@ internal static class Program
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
               --alt --speed --bearing --accuracy    NMEA 附加字段
               --sentences gga,rmc,gsa,gsv          NMEA 句子集合（默认 gga,rmc）
-              --rate               上报周期，毫秒（默认 100，最小 10）
+              --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
               --name --model --manufacturer --serial --firmware --hardware   配件身份
               --probe              只跑到识别为止（收到 0x1D02/0x1D03 即退出）

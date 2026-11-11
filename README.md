@@ -70,7 +70,8 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## 使用
 
-图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、身份目录、传输方式、随机偏移都在「高级设置」里；也可以只启动控制台：
+图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、身份目录、传输方式、随机偏移都在「高级设置」里。
+如果 iPhone 在订阅定位时指定了上报间隔（`0xFFFA` 里的 `0x8001` / `0x8002`），以设备指定的为准，`--rate` 只作为设备没提要求时的默认值。可以只启动控制台：
 
 ```bash
 iap2loc serve --port 8737
@@ -98,7 +99,7 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--lat` / `--lon` | 目标坐标，默认 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
 | `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
-| `--rate` | 上报周期（毫秒），默认 100，最小 10 |
+| `--rate` | 上报周期（毫秒），默认 250，最小 10 |
 | `--identity` | 身份目录；缺省时链路与识别可用，认证不会通过 |
 | `--name` / `--model` / `--serial` … | 配件身份展示字段 |
 | `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |
