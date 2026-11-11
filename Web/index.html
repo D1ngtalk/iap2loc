@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>iAP2 定位控制台</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #fff; --line: #e3e2dd; --text: #23231f; --muted: #6f6d66;
+    --accent: #185fa5; --ok: #0f6e56; --warn: #ba7517; --bad: #a32d2d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+    font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 14px; font-weight: 500; margin: 0; white-space: nowrap; }
+  .chip { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted);
+    background: #fafaf8; border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; white-space: nowrap; }
+  .chip.warn { color: var(--warn); border-color: #f0dcb6; background: #fdf6e8; }
+  .banner { padding: 9px 14px; background: #fbeceb; color: var(--bad); border-bottom: 1px solid #f0c9c6;
+    font-size: 13px; line-height: 1.5; }
+  .banner a { color: var(--bad); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(24,95,165,.45); } 70% { box-shadow: 0 0 0 7px rgba(24,95,165,0); } 100% { box-shadow: 0 0 0 0 rgba(24,95,165,0); } }
+  button.primary.dirty { animation: pulse 1.8s ease-out infinite; }
+  @media (prefers-reduced-motion: reduce) { button.primary.dirty { animation: none; } }
+  button:disabled { opacity: .5; cursor: default; }
+  .spacer { flex: 1; }
+  button { font: inherit; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  button:hover { border-color: #c9c8c2; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--bad); border-color: #e8c4c4; }
+  button.mini { padding: 2px 8px; font-size: 12px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #map { flex: 1; min-width: 0; }
+  aside { width: 400px; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .scroll { overflow: auto; padding: 12px 14px; flex: 1; }
+  section { margin-bottom: 16px; }
+  section h2 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 0 0 8px; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
+  section h2 .grow { flex: 1; }
+  .row { display: flex; gap: 8px; margin-bottom: 7px; align-items: center; }
+  .row > label { width: 62px; color: var(--muted); flex: none; font-size: 12px; }
+  .row > input, .row > select { flex: 1; min-width: 0; }
+  input, select { font: inherit; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--text); }
+  input:focus, select:focus { outline: 2px solid #cfe0f2; border-color: var(--accent); }
+  input[type=checkbox] { flex: none; width: 15px; height: 15px; accent-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 2px 0 0; }
+  .readout { display: flex; justify-content: space-between; gap: 8px; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11.5px; padding: 3px 8px; background: #fafaf8; border: 1px solid var(--line); border-radius: 7px; margin-bottom: 5px; }
+  .readout span:first-child { color: var(--muted); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 8px; flex: 1; background: #fff; font-size: 12px; }
+  .seg button.active { background: #eaf2fb; color: var(--accent); }
+  .item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 6px; background: #fff; }
+  .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .sub { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, Consolas, monospace; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #cfcdc6; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  details { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: #fcfcfa; }
+  details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 500; }
+  details[open] summary { margin-bottom: 8px; }
+  #log { flex: none; height: 190px; border-top: 1px solid var(--line); background: #1f1f1d; color: #d8d6cf;
+    overflow: auto; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; padding: 7px 9px; }
+  #log div { white-space: pre-wrap; word-break: break-all; }
+  #log .t { color: #7d7a72; } #log .ok { color: #7fd1a8; } #log .error { color: #f0a3a3; }
+  #log .warn { color: #e8c27a; } #log .step { color: #9cc4ea; }
+  .mapnote { position: absolute; z-index: 500; left: 12px; top: 12px; background: rgba(255,255,255,.94);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>iAP2 定位控制台</h1>
+  <span class="chip" id="chipWgs">—</span>
+  <span class="chip" id="chipGcj">—</span>
+  <span class="chip warn" id="dirtyChip" style="display:none">有未应用的修改</span>
+  <div class="spacer"></div>
+  <button id="apply" class="primary mini" disabled>应用修改</button>
+  <button id="favorite" class="mini">收藏当前</button>
+  <button id="stopAll" class="danger mini">停止全部</button>
+</header>
+
+<div id="buildWarning" class="banner" style="display:none"></div>
+
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="scroll">
+      <section>
+        <h2>地图基准<span class="grow"></span></h2>
+        <div class="seg" id="datum">
+          <button data-datum="wgs" class="active">WGS-84 · OSM</button>
+          <button data-datum="gcj">GCJ-02 · 高德</button>
+        </div>
+        <p class="hint">NMEA 只认 WGS-84。在高德看到的坐标是 GCJ-02，切到对应底图再点，坐标会自动换算。</p>
+      </section>
+
+      <section>
+        <h2>目标位置<span class="grow"></span></h2>
+        <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /></div>
+        <div class="row"><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
+        <div class="row"><label>精度 m</label><input id="accuracy" type="number" step="0.1" value="5" /></div>
+        <div class="row"><label>高度 m</label><input id="alt" type="number" step="0.1" value="10" /></div>
+        <div class="row"><label>随机精度</label><input id="jitterAccuracy" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
+        <div class="row"><label>随机偏移</label><input id="jitterPosition" type="checkbox" /><span class="hint" style="margin:0">开始时随机一次</span></div>
+        <div class="readout" id="resolvedRow" style="display:none"><span>实际发送</span><span id="resolvedText">—</span></div>
+        <div class="row" style="margin-top:6px"><button id="locate" style="flex:1" class="mini">用本机位置</button><button id="copy" style="flex:1" class="mini">复制 WGS-84</button></div>
+      </section>
+
+      <section>
+        <h2>设备<span class="grow"></span><button id="refreshDevices" class="mini">刷新</button></h2>
+        <div id="sessions"></div>
+        <div class="row" style="margin-top:8px">
+          <select id="deviceSelect" style="flex:1"><option>正在读取…</option></select>
+          <button id="addDevice" class="primary mini">添加</button>
+        </div>
+        <div class="row"><label style="width:auto">显示全部</label><input id="showAll" type="checkbox" /><span class="hint" style="margin:0">含非 Apple 设备</span></div>
+      </section>
+
+      <section>
+        <h2>收藏<span class="grow"></span></h2>
+        <div id="favorites"><p class="hint">点右上角「收藏当前」保存坐标。</p></div>
+      </section>
+
+      <section>
+        <details>
+          <summary>高级设置</summary>
+          <div class="row"><label>周期 ms</label><input id="rate" type="number" step="100" value="1000" /></div>
+          <div class="row"><label>句子集</label>
+            <select id="sentences">
+              <option value="gga,rmc">GGA + RMC</option>
+              <option value="gga,rmc,gsa,gsv">GGA + RMC + GSA + GSV</option>
+            </select>
+          </div>
+          <div class="row"><label>身份目录</label><input id="identity" placeholder="留空 = 用内置身份" /></div>
+          <div class="row"><label>传输</label>
+            <select id="transport">
+              <option value="bt">蓝牙 RFCOMM</option>
+              <option value="tcp">TCP（Wi-Fi 隧道）</option>
+            </select>
+          </div>
+          <div class="row" id="rowHost" style="display:none"><label>TCP 地址</label><input id="host" value="127.0.0.1" /></div>
+          <div class="row" id="rowPort" style="display:none"><label>TCP 端口</label><input id="port" type="number" value="8738" /></div>
+          <div class="row"><label>精度范围</label><input id="accuracyMin" type="number" step="0.1" value="3" /><input id="accuracyMax" type="number" step="0.1" value="12" /></div>
+          <div class="row"><label>偏移半径</label><input id="jitterMeters" type="number" step="1" value="10" /></div>
+          <p class="hint">周期实时生效；句子集与身份目录对之后新加的设备生效。</p>
+        </details>
+      </section>
+    </div>
+    <div id="log"></div>
+  </aside>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const PI = Math.PI, AXIS = 6378245.0, EE = 0.00669342162296594323;
+function outOfChina(lat, lon) { return !(lon > 73.66 && lon < 135.05 && lat > 3.86 && lat < 53.55); }
+function transformLat(x, y) {
+  let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*PI) + 20*Math.sin(2*x*PI)) * 2/3;
+  r += (20*Math.sin(y*PI) + 40*Math.sin(y/3*PI)) * 2/3;
+  r += (160*Math.sin(y/12*PI) + 320*Math.sin(y*PI/30)) * 2/3;
+  return r;
+}
+function transformLon(x, y) {
+  let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*PI) + 20*Math.sin(2*x*PI)) * 2/3;
+  r += (20*Math.sin(x*PI) + 40*Math.sin(x/3*PI)) * 2/3;
+  r += (150*Math.sin(x/12*PI) + 300*Math.sin(x/30*PI)) * 2/3;
+  return r;
+}
+function wgs2gcj(lat, lon) {
+  if (outOfChina(lat, lon)) return [lat, lon];
+  let dLat = transformLat(lon - 105, lat - 35), dLon = transformLon(lon - 105, lat - 35);
+  const radLat = lat / 180 * PI;
+  let magic = Math.sin(radLat); magic = 1 - EE * magic * magic;
+  const sq = Math.sqrt(magic);
+  dLat = (dLat * 180) / ((AXIS * (1 - EE)) / (magic * sq) * PI);
+  dLon = (dLon * 180) / (AXIS / sq * Math.cos(radLat) * PI);
+  return [lat + dLat, lon + dLon];
+}
+function gcj2wgs(lat, lon) {
+  let wLat = lat, wLon = lon;
+  for (let i = 0; i < 8; i++) {
+    const [gLat, gLon] = wgs2gcj(wLat, wLon);
+    wLat += lat - gLat; wLon += lon - gLon;
+  }
+  return [wLat, wLon];
+}
+
+const el = id => document.getElementById(id);
+const S = {
+  target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5,
+            jitterPosition: false, jitterMeters: 10, jitterAccuracy: false,
+            accuracyMin: 3, accuracyMax: 12 },
+  rate: 1000, sentences: 'gga,rmc', identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
+  datum: 'wgs', sessions: [], devices: [], favorites: [], editing: false
+};
+
+let map = null, marker = null, osmLayer = null, amapLayer = null;
+
+function initMap() {
+  if (typeof L === 'undefined') {
+    el('map').innerHTML = '<div class="mapnote">地图资源未加载（离线或 CDN 不可达）。坐标仍可手动输入。</div>';
+    return;
+  }
+  map = L.map('map', { zoomControl: true }).setView([S.target.lat, S.target.lon], 12);
+  osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+  amapLayer = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+    { subdomains: '1234', maxZoom: 18, attribution: '&copy; 高德地图' });
+  osmLayer.addTo(map);
+  marker = L.marker([S.target.lat, S.target.lon], { draggable: true }).addTo(map);
+  marker.on('dragend', () => applyPicked(marker.getLatLng().lat, marker.getLatLng().lng));
+  map.on('click', e => applyPicked(e.latlng.lat, e.latlng.lng));
+}
+
+function applyPicked(lat, lon) {
+  const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
+  S.target.lat = +wLat.toFixed(6);
+  S.target.lon = +wLon.toFixed(6);
+  renderTarget(true);
+  readInputs();
+  markDirty();
+}
+
+function renderTarget(updateInputs) {
+  const [gLat, gLon] = wgs2gcj(S.target.lat, S.target.lon);
+  el('chipWgs').textContent = 'WGS ' + S.target.lat.toFixed(6) + ', ' + S.target.lon.toFixed(6);
+  el('chipGcj').textContent = 'GCJ ' + gLat.toFixed(6) + ', ' + gLon.toFixed(6);
+  if (updateInputs) {
+    el('lat').value = S.target.lat.toFixed(6);
+    el('lon').value = S.target.lon.toFixed(6);
+  }
+  if (map && marker) marker.setLatLng(S.datum === 'gcj' ? [gLat, gLon] : [S.target.lat, S.target.lon]);
+}
+
+function setDatum(next) {
+  if (next === S.datum) return;
+  S.datum = next;
+  document.querySelectorAll('#datum button').forEach(b => b.classList.toggle('active', b.dataset.datum === next));
+  if (map) {
+    if (next === 'gcj') { map.removeLayer(osmLayer); amapLayer.addTo(map); }
+    else { map.removeLayer(amapLayer); osmLayer.addTo(map); }
+    const [gLat, gLon] = wgs2gcj(S.target.lat, S.target.lon);
+    map.setView(next === 'gcj' ? [gLat, gLon] : [S.target.lat, S.target.lon], map.getZoom());
+  }
+  renderTarget(false);
+}
+document.querySelectorAll('#datum button').forEach(b => b.addEventListener('click', () => setDatum(b.dataset.datum)));
+
+function readInputs() {
+  const lat = parseFloat(el('lat').value), lon = parseFloat(el('lon').value);
+  if (Number.isFinite(lat)) S.target.lat = lat;
+  if (Number.isFinite(lon)) S.target.lon = lon;
+  S.target.accuracy = num('accuracy', 5);
+  S.target.alt = num('alt', 10);
+  S.target.jitterAccuracy = el('jitterAccuracy').checked;
+  S.target.jitterPosition = el('jitterPosition').checked;
+  S.target.accuracyMin = num('accuracyMin', 3);
+  S.target.accuracyMax = num('accuracyMax', 12);
+  S.target.jitterMeters = num('jitterMeters', 10);
+  S.rate = num('rate', 1000);
+  S.sentences = el('sentences').value;
+  S.identity = el('identity').value.trim();
+  S.transport = el('transport').value;
+  S.host = el('host').value.trim();
+  S.port = num('port', 8738);
+}
+
+function num(id, fallback) {
+  const v = parseFloat(el(id).value);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+let dirty = false;
+
+function onEdited() {
+  readInputs();
+  renderTarget(false);
+  markDirty();
+}
+
+function markDirty() {
+  if (dirty) return;
+  dirty = true;
+  el('apply').disabled = false;
+  el('apply').classList.add('dirty');
+  el('dirtyChip').style.display = '';
+}
+
+function markClean() {
+  dirty = false;
+  el('apply').disabled = true;
+  el('apply').classList.remove('dirty');
+  el('dirtyChip').style.display = 'none';
+}
+
+async function applyTarget() {
+  readInputs();
+  renderTarget(false);
+  const result = await postJson('/api/target', {
+    latitude: S.target.lat, longitude: S.target.lon, altitude: S.target.alt,
+    accuracy: S.target.accuracy, jitterPosition: S.target.jitterPosition,
+    jitterMeters: S.target.jitterMeters, jitterAccuracy: S.target.jitterAccuracy,
+    accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax, rate: S.rate
+  });
+
+  if (result && result.ok) {
+    if (result.target) updateResolved(result.target);
+    markClean();
+    return true;
+  }
+
+  appendLog({ time: '', level: 'error', text: (result && result.error) || '应用失败' });
+  return false;
+}
+
+function updateResolved(target) {
+  const active = target.jitterPosition || target.jitterAccuracy;
+  el('resolvedRow').style.display = active ? 'flex' : 'none';
+  if (!active) return;
+  const accuracy = target.resolvedAccuracy == null ? '—' : target.resolvedAccuracy.toFixed(1) + ' m';
+  el('resolvedText').textContent =
+    target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6) + ' · ' + accuracy;
+}
+
+['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','rate'].forEach(id => {
+  el(id).addEventListener('input', onEdited);
+});
+['jitterAccuracy','jitterPosition'].forEach(id => {
+  el(id).addEventListener('change', onEdited);
+});
+
+el('apply').addEventListener('click', applyTarget);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    if (dirty) applyTarget();
+  }
+});
+el('transport').addEventListener('change', () => {
+  const bt = el('transport').value === 'bt';
+  el('rowHost').style.display = bt ? 'none' : 'flex';
+  el('rowPort').style.display = bt ? 'none' : 'flex';
+  renderDevices();
+});
+
+async function postJson(path, body) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return await r.json();
+  } catch (e) { return { ok: false, error: String(e) }; }
+}
+
+async function getJson(path) {
+  try { return await (await fetch(path)).json(); } catch (e) { return null; }
+}
+
+async function loadDevices() {
+  el('deviceSelect').innerHTML = '<option>读取中…</option>';
+  const devices = await getJson('/api/devices');
+  S.devices = Array.isArray(devices) ? devices : [];
+  renderDevices();
+}
+
+function renderDevices() {
+  const showAll = el('showAll').checked;
+  const list = S.devices.filter(d => showAll || d.likelyApple);
+  const select = el('deviceSelect');
+  if (list.length === 0) {
+    select.innerHTML = '<option value="">' + (S.devices.length ? '没有 Apple 设备（可勾选显示全部）' : '没有已配对设备') + '</option>';
+    return;
+  }
+  select.innerHTML = list.map(d =>
+    '<option value="' + d.address + '">' + d.name + ' · ' + d.address + (d.likelyApple ? '' : ' · 其他') + '</option>'
+  ).join('');
+}
+
+el('refreshDevices').addEventListener('click', loadDevices);
+el('showAll').addEventListener('change', renderDevices);
+
+el('addDevice').addEventListener('click', async () => {
+  readInputs();
+  const bt = S.transport === 'bt';
+  const mac = el('deviceSelect').value;
+  if (bt && !mac) { appendLog({ time: '', level: 'error', text: '请先选择设备' }); return; }
+
+  // A new device must start from the point on screen, so apply pending edits first.
+  if (!(await applyTarget())) return;
+
+  const option = el('deviceSelect').selectedOptions[0];
+  const result = await postJson('/api/sessions', {
+    transport: S.transport, mac: bt ? mac : null,
+    host: bt ? null : S.host, port: bt ? null : S.port,
+    identity: S.identity, rate: S.rate, sentences: S.sentences,
+    label: bt ? (option ? option.textContent.split(' · ')[0] : mac) : (S.host + ':' + S.port)
+  });
+  if (!result.ok) appendLog({ time: '', level: 'error', text: result.error || '添加失败' });
+  pollState();
+});
+
+async function removeSession(id) {
+  await postJson('/api/sessions/remove', { id });
+  pollState();
+}
+
+el('stopAll').addEventListener('click', async () => { await postJson('/api/stop-all'); pollState(); });
+
+el('favorite').addEventListener('click', async () => {
+  readInputs();
+  const name = prompt('收藏名称', S.target.lat.toFixed(4) + ', ' + S.target.lon.toFixed(4));
+  if (name === null) return;
+  await postJson('/api/favorites', {
+    name, latitude: S.target.lat, longitude: S.target.lon,
+    altitude: S.target.alt, accuracy: S.target.accuracy
+  });
+  loadFavorites();
+});
+
+el('locate').addEventListener('click', () => {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(p => {
+    S.target.lat = +p.coords.latitude.toFixed(6);
+    S.target.lon = +p.coords.longitude.toFixed(6);
+    if (Number.isFinite(p.coords.altitude)) { S.target.alt = +p.coords.altitude.toFixed(1); el('alt').value = S.target.alt; }
+    if (Number.isFinite(p.coords.accuracy)) { S.target.accuracy = Math.max(1, +p.coords.accuracy.toFixed(1)); el('accuracy').value = S.target.accuracy; }
+    renderTarget(true);
+    readInputs();
+    markDirty();
+    if (map) map.setView(S.datum === 'gcj' ? wgs2gcj(S.target.lat, S.target.lon) : [S.target.lat, S.target.lon], 15);
+  }, () => appendLog({ time: '', level: 'warn', text: '浏览器拒绝或无法取得本机位置' }));
+});
+
+el('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(S.target.lat.toFixed(6) + ',' + S.target.lon.toFixed(6)); } catch {}
+});
+
+async function loadFavorites() {
+  const list = await getJson('/api/favorites');
+  S.favorites = Array.isArray(list) ? list : [];
+  const box = el('favorites');
+  if (S.favorites.length === 0) { box.innerHTML = '<p class="hint">点右上角「收藏当前」保存坐标。</p>'; return; }
+  box.innerHTML = '';
+  S.favorites.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.dataset.id = f.id;
+    row.dataset.lat = f.latitude;
+    row.dataset.lon = f.longitude;
+    row.dataset.alt = f.altitude == null ? '' : f.altitude;
+    row.dataset.accuracy = f.accuracy == null ? '' : f.accuracy;
+    row.style.cursor = 'pointer';
+    row.innerHTML = '<div class="name">' + escapeHtml(f.name) + '<div class="sub">' +
+      f.latitude.toFixed(5) + ', ' + f.longitude.toFixed(5) + '</div></div>' +
+      '<button class="mini danger" data-remove="' + f.id + '">✕</button>';
+    box.appendChild(row);
+  });
+}
+
+function renderSessions() {
+  const box = el('sessions');
+  if (S.sessions.length === 0) { box.innerHTML = '<p class="hint">尚未添加设备。</p>'; return; }
+  box.innerHTML = '';
+  S.sessions.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    const linkClass = s.link === 'Normal' ? 'ok' : (s.running ? 'warn' : 'bad');
+    row.innerHTML =
+      '<span class="dot ' + linkClass + '"></span>' +
+      '<div class="name">' + escapeHtml(s.label) + '<div class="sub">' + escapeHtml(s.address || '') + '</div></div>' +
+      '<span class="sub">' + (s.authenticated ? '认证' : '未认证') + ' · ' + s.sent + '</span>' +
+      '<button class="mini danger" data-remove="' + s.id + '">✕</button>';
+    box.appendChild(row);
+  });
+}
+
+function pillState(state) {
+  if (!state) return;
+  S.sessions = state.sessions || [];
+  renderSessions();
+  renderWarning(state.warning);
+}
+
+function renderWarning(text) {
+  const box = el('buildWarning');
+  if (!text) {
+    box.style.display = 'none';
+    box.textContent = '';
+    return;
+  }
+  const html = escapeHtml(text)
+    .replace(/(https?:\/\/[^\s）)]+)/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>');
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
+async function pollState() {
+  const state = await getJson('/api/state');
+  if (!state) return;
+  pillState(state);
+  if (state.target) updateResolved(state.target);
+}
+
+let lastLog = 0;
+function appendLog(entry) {
+  const node = document.createElement('div');
+  const level = (entry.level || '').trim();
+  node.innerHTML = '<span class="t">' + entry.time + '</span> <span class="' + level + '">' + level + '</span> ' + escapeHtml(entry.text);
+  const log = el('log');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  log.appendChild(node);
+  if (atBottom) log.scrollTop = log.scrollHeight;
+  while (log.childElementCount > 400) log.removeChild(log.firstChild);
+}
+function escapeHtml(t) { return String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+async function pollLog() {
+  const data = await getJson('/api/log?since=' + lastLog);
+  if (!data) return;
+  lastLog = data.last;
+  (data.entries || []).forEach(appendLog);
+}
+
+el('sessions').addEventListener('click', e => {
+  const button = e.target.closest('button[data-remove]');
+  if (button) removeSession(button.dataset.remove);
+});
+
+el('favorites').addEventListener('click', async e => {
+  const button = e.target.closest('button[data-remove]');
+  if (button) {
+    await postJson('/api/favorites/remove', { id: button.dataset.remove });
+    loadFavorites();
+    return;
+  }
+
+  const row = e.target.closest('.item');
+  if (!row) return;
+  S.target.lat = parseFloat(row.dataset.lat);
+  S.target.lon = parseFloat(row.dataset.lon);
+  if (row.dataset.alt !== '') { S.target.alt = parseFloat(row.dataset.alt); el('alt').value = S.target.alt; }
+  if (row.dataset.accuracy !== '') { S.target.accuracy = parseFloat(row.dataset.accuracy); el('accuracy').value = S.target.accuracy; }
+  renderTarget(true);
+  readInputs();
+  markDirty();
+  if (map) map.setView(S.datum === 'gcj' ? wgs2gcj(S.target.lat, S.target.lon) : [S.target.lat, S.target.lon], map.getZoom());
+});
+
+initMap();
+renderTarget(true);
+markClean();
+loadDevices();
+loadFavorites();
+pollState();
+pollLog();
+setInterval(pollState, 900);
+setInterval(pollLog, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+bin/
+obj/
+dist/
+publish/
+Debug/
+Release/
+*.user
+.idea/
+.vs/
+
+# MFi 身份材料：私钥与证书链，任何情况下都不要提交
+identity.pk8
+certificate.p7b
+*.pk8
+*.p7b
+*.dpapi
+identity.enc
+identity.bin
+
+# 常见存放目录（放自己密钥的地方）
+identity/
+ident/
+secrets/
+test-identity/
+test-ident/
