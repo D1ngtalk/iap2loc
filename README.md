@@ -131,3 +131,5 @@ identity/
 本项目以 GNU General Public License v3.0 发布，全文见 [LICENSE](LICENSE)。
 
 实现思路参考了 [DiPlay](https://github.com/shihabal3amri/DiPlay) 与 [WinPlay](https://github.com/Roylyl/WinPlay)（两者均为 GPL-3.0 系），因此同样采用 GPL-3.0。分发二进制时请一并附带许可证文本与源码获取方式。
+
+[Linux Do 社区](https://linux.do/) 
