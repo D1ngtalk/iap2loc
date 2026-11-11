@@ -1,5 +1,7 @@
 # iap2loc
 
+**中文** · [English](README.en.md)
+
 Windows 下的 iAP2 定位客户端，通过 iAP2 协议向 iOS 设备下发定位（NMEA），并提供一个本地 Web 控制台用于选点和调参。
 
 定位最终由 iOS 统一融合：配件只是其中一个来源，并不等于系统级替换。
