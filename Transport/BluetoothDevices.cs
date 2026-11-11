@@ -10,7 +10,7 @@ internal sealed record BluetoothDevice(
     bool Paired,
     bool LikelyApple);
 
-/// <summary>Lists Bluetooth radios and the devices Windows already knows about (paired or remembered).</summary>
+/// <summary>Lists paired Bluetooth devices using the native API for the current operating system.</summary>
 internal static class BluetoothDevices
 {
     // A handful of very common Apple prefixes. The name and device-class checks catch the rest,
@@ -78,6 +78,15 @@ internal static class BluetoothDevices
 
     public static List<BluetoothDevice> GetDevices()
     {
+        if (OperatingSystem.IsMacOS()) return MacBtRfcommTransport.GetDevices();
+
+        // This implementation uses the Windows Bluetooth APIs, not macOS IOBluetooth.
+        // Keep the local web console and TCP mode usable on other platforms.
+        if (!OperatingSystem.IsWindows())
+        {
+            return new List<BluetoothDevice>();
+        }
+
         var result = new List<BluetoothDevice>();
         var radioParams = new BluetoothFindRadioParams { Size = (uint)Marshal.SizeOf<BluetoothFindRadioParams>() };
         var find = Native.BluetoothFindFirstRadio(ref radioParams, out var radio);
@@ -142,6 +151,8 @@ internal static class BluetoothDevices
     }
 
     /// <summary>Phone device class, an Apple name, or a known Apple OUI — any one is enough.</summary>
+    internal static bool IsLikelyApple(string name, string address) => LooksLikeApple(name, 0, address);
+
     private static bool LooksLikeApple(string name, uint classOfDevice, string address)
     {
         if (name.Contains("iPhone", StringComparison.OrdinalIgnoreCase) ||
@@ -164,6 +175,9 @@ internal static class BluetoothDevices
 
     public static void List()
     {
+        var local = TryGetLocalAdapterAddress();
+        if (local is not null)
+            Log.Info("本机蓝牙适配器地址 " + string.Join(':', local.Select(b => b.ToString("X2"))));
         var devices = GetDevices();
         if (devices.Count == 0)
         {
@@ -180,7 +194,10 @@ internal static class BluetoothDevices
             Log.Info($"{device.Address}  {device.Name,-32}  {string.Join(", ", flags)}");
         }
 
-        Log.Info("先在 Windows 蓝牙设置里配对 iPhone，再用 --mac 指定地址");
+        if (OperatingSystem.IsWindows())
+            Log.Info("先在 Windows 蓝牙设置里配对 iPhone，再用 --mac 指定地址");
+        else
+            Log.Info("请先在 macOS 系统设置 > 蓝牙中配对目标 iPhone。");
     }
 
     public static string FormatAddress(ulong address) =>
@@ -193,6 +210,11 @@ internal static class BluetoothDevices
     /// <summary>The local adapter address, needed for identification parameter 17 (Bluetooth transport).</summary>
     public static byte[]? TryGetLocalAdapterAddress()
     {
+        if (OperatingSystem.IsMacOS()) return MacBtRfcommTransport.GetLocalAdapterAddress();
+
+        if (!OperatingSystem.IsWindows())
+            return null;
+
         var radioParams = new BluetoothFindRadioParams { Size = (uint)Marshal.SizeOf<BluetoothFindRadioParams>() };
         var find = Native.BluetoothFindFirstRadio(ref radioParams, out var radio);
         if (find == IntPtr.Zero)

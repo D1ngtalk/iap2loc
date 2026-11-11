@@ -276,9 +276,13 @@ internal static class Program
 
     private static ITransport OpenTransport(string name, Options options) => name switch
     {
-        "bt" or "bluetooth" => BtRfcommTransport.Connect(
-            options.Text("mac") ?? throw new ArgumentException("--mac AA:BB:CC:DD:EE:FF is required for --transport bt"),
-            options.Int("connect-timeout", 20)),
+        "bt" or "bluetooth" => OperatingSystem.IsMacOS()
+            ? MacBtRfcommTransport.Connect(
+                options.Text("mac") ?? throw new ArgumentException("--mac AA:BB:CC:DD:EE:FF is required for --transport bt"),
+                options.Int("connect-timeout", 20))
+            : BtRfcommTransport.Connect(
+                options.Text("mac") ?? throw new ArgumentException("--mac AA:BB:CC:DD:EE:FF is required for --transport bt"),
+                options.Int("connect-timeout", 20)),
 
         "tcp" or "wifi" => TcpTransport.Connect(
             options.Text("host", "127.0.0.1"),
@@ -366,7 +370,7 @@ internal static class Program
         Console.WriteLine("""
             iap2loc - 通过 iAP2 给 iPhone 下发定位
 
-            直接双击 exe（不带参数）会启动控制页面并自动打开浏览器，端口 8737。
+            不带参数运行程序，会启动控制页面并自动打开浏览器，端口 8737。
 
             用法:
               iap2loc run --transport bt  --mac AA:BB:CC:DD:EE:FF [--identity 目录] [选项]
@@ -387,7 +391,7 @@ internal static class Program
               -v, --verbose        打印协议级细节
 
             说明:
-              run 需要 iPhone 已在 Windows 蓝牙设置里配对。
+              蓝牙模式需要先在对应系统的蓝牙设置中配对 iPhone。
               身份材料放在 --identity 指向的目录里，本程序不包含任何 MFi 材料。
             """);
     }
