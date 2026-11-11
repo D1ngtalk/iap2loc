@@ -40,3 +40,20 @@
 - 两种 CPU 版本均已构建；实际运行验证以 Apple Silicon Mac mini 为主，Intel 架构未在 Intel 机器上独立运行验证。
 
 源码与构建脚本包含 Native/MacBluetoothBridge.m、Transport/MacBtRfcommTransport.cs、scripts/package-macos.sh。遵守 GPL-3.0。
+
+## GitHub Actions 全自动构建 / 验证 / 分发
+
+构建不依赖开发者的 Mac mini。GitHub Actions 工作流在仓库分支有更新时自动触发：
+`https://github.com/shzxm/iap2loc/actions/workflows/macos-dmg.yml`
+
+流水线执行：
+1. Apple Silicon GitHub-hosted macOS 15 runner 安装 .NET 10，构建原生 IOBluetooth 双架构动态库与 ARM64、Intel 两个独立 .app；
+2. ad-hoc 本地签名，打包包含许可证、源码和补丁的 DMG，生成 SHA256SUMS；
+3. 在 ARM64 runner 上验证 DMG 并挂载，从 DMG 中执行 ARM64 app、测试 HTTP 控制界面与 JSON API；
+4. 上传 DMG、完整源码、校验和作为 Actions Artifacts，保留 30 天；
+5. **另一台真实 Intel GitHub-hosted runner** 下载上一步的 DMG，复验哈希、签名，并从同一 DMG 执行 Intel app 和 HTTP 测试；
+6. 仅当 GitHub 仓库推送 `v*` 版本标签，且所有测试成功时，通过工作流发布 GitHub **Prerelease**，附 DMG、源码和校验和。不在 PR 或普通分支提交时自动创建 Release。
+
+macOS 15 GitHub runner 的蓝牙硬件/iPhone 通常不可用。因此 CI 检测 DMG 可安装与可启动、正常调用程序和 Web API；不会伪称通过真实 iAP2、RFComm/MFi 连接、定位改变和授权。最终实机验收是单独的审核关口。
+
+本项目未配置 Apple Developer ID 或公证密钥，发布内容仅 ad-hoc 签名。若未来需要正式公证，必须安全配置 Apple 开发者账户与专用 CI 密钥，并单独设计不向 fork PR 暴露凭据的公证 job。

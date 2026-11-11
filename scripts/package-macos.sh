@@ -70,12 +70,20 @@ cp README-macOS.md "$STAGE/README-macOS.md"
 cp LICENSE "$STAGE/LICENSE"
 ln -sf /Applications "$STAGE/Applications"
 printf 'upstream=%s\n' "$(git rev-parse HEAD)" > "$OUT/build-revision.txt"
-git diff -- Program.cs Engine/RunSession.cs Transport/BluetoothDevices.cs Transport/BtRfcommTransport.cs \
+# Produce a reviewable patch from committed source, never a working-tree diff.
+# On GitHub Actions checkout uses fetch-depth: 0, so origin/main is available.
+if git rev-parse --verify refs/remotes/origin/main >/dev/null 2>&1; then
+    BASE="$(git merge-base HEAD refs/remotes/origin/main)"
+elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+    BASE="HEAD^"
+else
+    BASE="HEAD"
+fi
+git diff "$BASE" HEAD -- . ':(exclude).github/workflows/*' \
      > "$OUT/dotnet-modifications.patch"
-tar -czf "$OUT/source.tar.gz" \
-    --exclude='./.git' --exclude='./bin' --exclude='./obj' \
-    --exclude='./dist' --exclude='./releases' \
-    --exclude='./Native/*.dylib' --exclude='./.DS_Store' .
+
+# Only include Git-tracked, committed files. No local secrets/build outputs.
+git archive --format=tar HEAD | gzip -9 > "$OUT/source.tar.gz"
 cp "$OUT/source.tar.gz" "$STAGE/source.tar.gz"
 cp "$OUT/dotnet-modifications.patch" "$STAGE/dotnet-modifications.patch"
 output="$OUT/iap2loc-macOS-Bluetooth-$DATE.dmg"
