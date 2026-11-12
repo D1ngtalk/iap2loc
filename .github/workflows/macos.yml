@@ -6,8 +6,6 @@ on:
       - main
       - 'dev/**'
       - feature/macos-iobluetooth-rfcomm-dmg
-    tags:
-      - 'v*'
   pull_request:
     paths:
       - '**/*.cs'
@@ -17,7 +15,14 @@ on:
       - 'Web/**'
       - 'README-macOS.md'
       - '.github/workflows/macos.yml'
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag，仅用于重跑发布'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -52,7 +57,23 @@ jobs:
       - name: Checkout full source history
         uses: actions/checkout@v4
         with:
+          # On a release event this is the release tag; a manual re-run must build the same tag
+          # instead of whatever branch was selected in the UI.
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
           fetch-depth: 0
+
+      - name: Verify the checkout matches the release tag
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          actual="$(git describe --tags --exact-match)"
+          if [ "$actual" != "$RELEASE_TAG" ]; then
+            echo "checked out $actual but expected $RELEASE_TAG" >&2
+            exit 1
+          fi
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
@@ -96,9 +117,10 @@ jobs:
           compression-level: 0
 
   publish:
-    name: Publish both DMGs on a version tag
+    name: Attach both DMGs to the release
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Branch pushes and pull requests build the DMGs but must not touch a release.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -116,12 +138,18 @@ jobs:
           name: iap2loc-macos-x64
           path: package/x64
 
-      - name: Create or update the GitHub release
+      - name: Attach assets to the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -euo pipefail
+          if [ -z "${RELEASE_TAG:-}" ]; then
+            echo "RELEASE_TAG is empty; this job only runs for release or workflow_dispatch" >&2
+            exit 1
+          fi
+
           cd package
 
           test -f arm64/iap2loc-macos-arm64.dmg
@@ -133,19 +161,17 @@ jobs:
           cat arm64/SHA256SUMS x64/SHA256SUMS > iap2loc-macos.sha256
           cat iap2loc-macos.sha256
 
-          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "iap2loc $GITHUB_REF_NAME" \
-              --notes "macOS 实验性构建（Apple Silicon 与 Intel 各一份）。ad-hoc 签名、未公证；蓝牙 RFCOMM 与 MFi 认证仍需真机验证。程序不含身份材料。" || \
-              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $RELEASE_TAG not found; publish the release first" >&2
+            exit 1
           fi
 
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$RELEASE_TAG" \
             arm64/iap2loc-macos-arm64.dmg \
             x64/iap2loc-macos-x64.dmg \
             iap2loc-macos.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets \
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name'
