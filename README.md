@@ -10,12 +10,12 @@ Windows 下的 iAP2 定位客户端，通过 iAP2 协议向 iOS 设备下发定�
 
 ### 1. 准备
 
-- 从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 下载 `iap2loc.exe` 或 [构建](#构建) 你自己的版本 (需要一份可用的 MFi 配件身份 `identity.pk8` + `certificate.p7b` ，放入 `./identity` 文件夹，仓库不包含任何身份材料)
+- 从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 下载 `iap2loc-windows-x64.exe` 或 [构建](#构建) 你自己的版本 (需要一份可用的 MFi 配件身份 `identity.pk8` + `certificate.p7b` ，放入 `./identity` 文件夹，仓库不包含任何身份材料)
 - 在 Windows「设置 → 蓝牙和其他设备」中配对 iOS 设备
 
 ### 2. 连接
 
-1. 双击 `iap2loc.exe`，浏览器会自动打开控制台 <http://localhost:8737/>
+1. 双击下载的 exe，浏览器会自动打开控制台 <http://localhost:8737/>
 2. 在「设备」下拉中选中刚配对的 iOS 设备（默认只列 Apple 设备，可勾「显示全部」）
 3. 点「添加」，按日志确认三个关键节点：
    - `0x1D02 IdentificationAccepted`：识别通过

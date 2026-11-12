@@ -1,16 +1,14 @@
-name: macOS Bluetooth build, test and DMG
+name: macOS build and smoke test (CI)
 
 on:
   push:
     branches:
       - feature/macos-iobluetooth-rfcomm-dmg
       - main
-    tags:
-      - 'v*'
+      - 'dev/**'
   pull_request:
     paths:
       - '**/*.cs'
-      - '*.cs'
       - '*.csproj'
       - 'Native/**'
       - 'scripts/**'
@@ -99,36 +97,3 @@ jobs:
           DMG="$(find package -type f -name 'iap2loc-macOS-Bluetooth-*.dmg' | head -1)"
           test -n "$DMG"
           bash scripts/smoke-macos.sh "$DMG" arm64
-
-  release:
-    name: Publish prerelease on version tag
-    needs:
-      - build-dmg
-      - arm64-smoke
-    if: github.repository == 'shzxm/iap2loc' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Download the exact CI-tested artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: iap2loc-macos-dmg
-          path: package
-
-      - name: Publish experimental GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          DMG="$(find package -type f -name 'iap2loc-macOS-Bluetooth-*.dmg' | head -1)"
-          test -n "$DMG"
-          test -f package/SHA256SUMS
-          test -f package/source.tar.gz
-          gh release create "$GITHUB_REF_NAME" "$DMG" package/SHA256SUMS package/source.tar.gz \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --prerelease \
-            --title "iap2loc macOS Bluetooth $GITHUB_REF_NAME" \
-            --notes "Experimental macOS ARM64/Intel build from GitHub Actions. CI validates the DMG and both applications; real iPhone SDP/RFCOMM and MFi authentication must still be tested. Ad-hoc signed, not notarized."
