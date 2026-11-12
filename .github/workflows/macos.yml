@@ -1,0 +1,151 @@
+name: macOS build, smoke test and release
+
+on:
+  push:
+    branches:
+      - main
+      - 'dev/**'
+      - feature/macos-iobluetooth-rfcomm-dmg
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - 'Native/**'
+      - 'scripts/**'
+      - 'Web/**'
+      - 'README-macOS.md'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iap2loc-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    name: Build ${{ matrix.suffix }} DMG
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            suffix: arm64
+            runner: macos-15
+            machine: arm64
+          - arch: x64
+            suffix: x64
+            runner: macos-15-intel
+            machine: x86_64
+    steps:
+      - name: Checkout full source history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate build host
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -m
+          test "$(uname -m)" = "${{ matrix.machine }}"
+          xcrun --find clang
+          dotnet --info
+
+      - name: Compile
+        run: dotnet build Iap2Loc.csproj --configuration Release --nologo
+
+      - name: Package DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/package-macos.sh "${{ matrix.arch }}" "dist/iap2loc-macos-${{ matrix.suffix }}.dmg"
+          ls -lh dist
+
+      - name: Smoke-test the packaged DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/smoke-macos.sh "dist/iap2loc-macos-${{ matrix.suffix }}.dmg" "${{ matrix.arch }}"
+
+      - name: Upload the DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap2loc-macos-${{ matrix.suffix }}
+          path: |
+            dist/iap2loc-macos-${{ matrix.suffix }}.dmg
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  publish:
+    name: Publish both DMGs on a version tag
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the arm64 DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: iap2loc-macos-arm64
+          path: package/arm64
+
+      - name: Download the x64 DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: iap2loc-macos-x64
+          path: package/x64
+
+      - name: Create or update the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd package
+
+          test -f arm64/iap2loc-macos-arm64.dmg
+          test -f x64/iap2loc-macos-x64.dmg
+          test -f arm64/SHA256SUMS
+          test -f x64/SHA256SUMS
+
+          # Distinct asset name: the Windows workflow publishes its own checksum file.
+          cat arm64/SHA256SUMS x64/SHA256SUMS > iap2loc-macos.sha256
+          cat iap2loc-macos.sha256
+
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "iap2loc $GITHUB_REF_NAME" \
+              --notes "macOS 实验性构建（Apple Silicon 与 Intel 各一份）。ad-hoc 签名、未公证；蓝牙 RFCOMM 与 MFi 认证仍需真机验证。程序不含身份材料。" || \
+              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" \
+            arm64/iap2loc-macos-arm64.dmg \
+            x64/iap2loc-macos-x64.dmg \
+            iap2loc-macos.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name'

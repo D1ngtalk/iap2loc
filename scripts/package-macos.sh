@@ -1,54 +1,70 @@
 #!/bin/bash
-# Builds both macOS architectures and creates installable .app bundles in one DMG.
+# Builds one macOS architecture and wraps it into a single-architecture DMG.
+# Used by both the CI build and the tagged release in .github/workflows/macos.yml.
 set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo "Usage: $0 arm64|x64 path/to/output.dmg" >&2
+    exit 2
+fi
+
+ARCH="$1"
+OUTPUT="$2"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-DATE="$(date +%Y%m%d)"
-OUT="$ROOT/releases/iap2loc-macos-bt-$DATE"
-STAGE="$OUT/dmg-root"
-mkdir -p "$OUT" "$STAGE"
-export DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+case "$ARCH" in
+    arm64) RID="osx-arm64"; LABEL="Apple Silicon" ;;
+    x64)   RID="osx-x64";   LABEL="Intel" ;;
+    *) echo "Unknown architecture: $ARCH" >&2; exit 2 ;;
+esac
+
 if ! command -v dotnet >/dev/null 2>&1; then
-    echo "Error: .NET 10 SDK is required. Install it before packaging." >&2
+    echo "Error: .NET 10 SDK is required." >&2
     exit 1
 fi
 
+mkdir -p "$(dirname "$OUTPUT")"
+OUTDIR="$(cd "$(dirname "$OUTPUT")" && pwd)"
+OUTPUT="$OUTDIR/$(basename "$OUTPUT")"
+
+WORK="$ROOT/build/macos-$ARCH"
+STAGE="$WORK/dmg-root"
+APP="$STAGE/iap2loc.app"
+
+rm -rf "$WORK"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+echo "Building universal IOBluetooth bridge and $RID payload"
 xcrun clang -fobjc-arc -fPIC -O2 -dynamiclib \
     -arch arm64 -arch x86_64 \
     -framework Foundation -framework IOBluetooth \
-    -o Native/libiap2macbt.dylib Native/MacBluetoothBridge.m
+    -o "$WORK/libiap2macbt.dylib" Native/MacBluetoothBridge.m
 
-for spec in "arm64:Apple Silicon" "x64:Intel"; do
-    arch="$(printf '%s' "$spec" | cut -d: -f1)"
-    label="$(printf '%s' "$spec" | cut -d: -f2)"
-    rid="osx-$arch"
-    appname="iap2loc ($label).app"
-    app="$STAGE/$appname"
-    echo "Building $rid -> $appname"
-    dotnet publish Iap2Loc.csproj -c Release -r "$rid" \
-        --self-contained true \
-        -p:PublishSingleFile=true \
-        -p:EnableCompressionInSingleFile=true \
-        -p:IncludeNativeLibrariesForSelfExtract=true \
-        -p:DebugType=None -p:DebugSymbols=false \
-        -o "$OUT/publish/$rid"
+dotnet publish Iap2Loc.csproj -c Release -r "$RID" \
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:EnableCompressionInSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -p:DebugType=None -p:DebugSymbols=false \
+    -o "$WORK/publish"
 
-    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-    cp "$OUT/publish/$rid/iap2loc" "$app/Contents/MacOS/iap2loc"
-    cp Native/libiap2macbt.dylib "$app/Contents/MacOS/libiap2macbt.dylib"
-    cp LICENSE "$app/Contents/Resources/LICENSE"
-    cp "$ROOT/README-macOS.md" "$app/Contents/Resources/README-macOS.md"
-    chmod 755 "$app/Contents/MacOS/iap2loc"
+cp "$WORK/publish/iap2loc" "$APP/Contents/MacOS/iap2loc"
+cp "$WORK/libiap2macbt.dylib" "$APP/Contents/MacOS/libiap2macbt.dylib"
+cp LICENSE "$APP/Contents/Resources/LICENSE"
+cp README-macOS.md "$APP/Contents/Resources/README-macOS.md"
+chmod 755 "$APP/Contents/MacOS/iap2loc"
 
-    cat > "$app/Contents/Info.plist" <<EOF
+cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>iap2loc</string>
-  <key>CFBundleIdentifier</key><string>local.iap2loc.macos.$arch</string>
+  <key>CFBundleIdentifier</key><string>local.iap2loc.macos.$ARCH</string>
   <key>CFBundleName</key><string>iap2loc</string>
-  <key>CFBundleDisplayName</key><string>iap2loc ($label)</string>
+  <key>CFBundleDisplayName</key><string>iap2loc ($LABEL)</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
@@ -59,38 +75,29 @@ for spec in "arm64:Apple Silicon" "x64:Intel"; do
 </dict>
 </plist>
 EOF
-    plutil -lint "$app/Contents/Info.plist"
-    codesign --force --sign - "$app/Contents/MacOS/libiap2macbt.dylib"
-    codesign --force --sign - "$app/Contents/MacOS/iap2loc"
-    codesign --force --deep --sign - "$app"
-    codesign --verify --deep --strict --verbose=2 "$app"
-done
+
+plutil -lint "$APP/Contents/Info.plist"
+codesign --force --sign - "$APP/Contents/MacOS/libiap2macbt.dylib"
+codesign --force --sign - "$APP/Contents/MacOS/iap2loc"
+codesign --force --deep --sign - "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
 
 cp README-macOS.md "$STAGE/README-macOS.md"
 cp LICENSE "$STAGE/LICENSE"
 ln -sf /Applications "$STAGE/Applications"
-printf 'upstream=%s\n' "$(git rev-parse HEAD)" > "$OUT/build-revision.txt"
-# Produce a reviewable patch from committed source, never a working-tree diff.
-# On GitHub Actions checkout uses fetch-depth: 0, so origin/main is available.
-if git rev-parse --verify refs/remotes/origin/main >/dev/null 2>&1; then
-    BASE="$(git merge-base HEAD refs/remotes/origin/main)"
-elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-    BASE="HEAD^"
-else
-    BASE="HEAD"
-fi
-git diff "$BASE" HEAD -- . ':(exclude).github/workflows/*' \
-     > "$OUT/dotnet-modifications.patch"
+printf 'upstream=%s\narchitecture=%s\n' "$(git rev-parse HEAD)" "$ARCH" > "$WORK/build-revision.txt"
+cp "$WORK/build-revision.txt" "$STAGE/build-revision.txt"
+git archive --format=tar HEAD | gzip -9 > "$STAGE/source.tar.gz"
 
-# Only include Git-tracked, committed files. No local secrets/build outputs.
-git archive --format=tar HEAD | gzip -9 > "$OUT/source.tar.gz"
-cp "$OUT/source.tar.gz" "$STAGE/source.tar.gz"
-cp "$OUT/dotnet-modifications.patch" "$STAGE/dotnet-modifications.patch"
-output="$OUT/iap2loc-macOS-Bluetooth-$DATE.dmg"
 hdiutil create -ov -format UDZO -fs HFS+ \
-    -volname "iap2loc macOS Bluetooth" -srcfolder "$STAGE" "$output"
-hdiutil verify "$output"
-( cd "$OUT" && shasum -a 256 "$(basename "$output")" source.tar.gz > SHA256SUMS )
-echo "DMG=$output"
-ls -lh "$output"
-cat "$OUT/SHA256SUMS"
+    -volname "iap2loc ($LABEL)" -srcfolder "$STAGE" "$OUTPUT"
+hdiutil verify "$OUTPUT"
+
+(
+    cd "$OUTDIR"
+    shasum -a 256 "$(basename "$OUTPUT")" > SHA256SUMS
+)
+
+echo "DMG=$OUTPUT"
+ls -lh "$OUTPUT"
+cat "$OUTDIR/SHA256SUMS"

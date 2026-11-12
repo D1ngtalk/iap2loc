@@ -1,0 +1,163 @@
+name: Windows build, smoke test and release
+
+on:
+  push:
+    branches:
+      - main
+      - 'dev/**'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - 'Web/**'
+      - 'scripts/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iap2loc-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    name: Build and smoke-test win-x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compile
+        run: dotnet build Iap2Loc.csproj --configuration Release --nologo
+
+      - name: Publish self-contained single file
+        shell: pwsh
+        run: |
+          dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o out
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+          if (-not (Test-Path out/iap2loc.exe)) { throw "publisher produced no iap2loc.exe" }
+          Move-Item out/iap2loc.exe out/iap2loc-windows-x64.exe -Force
+          Get-ChildItem out | Select-Object Name, Length
+
+      - name: Smoke-test the published executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path out/iap2loc-windows-x64.exe).Path
+          $port = 18740
+          $env:IAP2LOC_NO_BROWSER = '1'
+
+          $help = & $exe --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "iap2loc --help exited with $LASTEXITCODE" }
+          if ($help -notmatch 'iap2loc') { throw "help output does not mention iap2loc" }
+
+          $proc = Start-Process -FilePath $exe -ArgumentList 'serve', '--port', "$port" `
+            -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput out/serve.out -RedirectStandardError out/serve.err
+
+          try {
+            $state = $null
+            for ($i = 0; $i -lt 60; $i++) {
+              if ($proc.HasExited) { break }
+              try {
+                $state = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/state" -TimeoutSec 2
+                break
+              } catch {
+                Start-Sleep -Milliseconds 250
+              }
+            }
+
+            if ($null -eq $state) {
+              Get-Content out/serve.err, out/serve.out -ErrorAction SilentlyContinue | Write-Host
+              throw "web console did not become ready on port $port"
+            }
+            if ($null -eq $state.target) { throw "state payload has no target" }
+
+            $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/" -TimeoutSec 5
+            if ($page.Content -notmatch '<html') { throw "index page was not served" }
+
+            Write-Host "PASS: CLI, web console and /api/state are working (mode=$($state.target.mode))."
+          } finally {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
+
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash out/iap2loc-windows-x64.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  iap2loc-windows-x64.exe" | Set-Content -Path out/SHA256SUMS -Encoding ascii
+          Get-Content out/SHA256SUMS
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap2loc-windows-x64
+          path: |
+            out/iap2loc-windows-x64.exe
+            out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    name: Attach the executable to the release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the CI-tested artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: iap2loc-windows-x64
+          path: package
+
+      - name: Create or update the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd package
+          test -f iap2loc-windows-x64.exe
+          test -f SHA256SUMS
+
+          # Distinct asset name: the macOS workflow publishes its own checksum file.
+          mv SHA256SUMS iap2loc-windows-x64.exe.sha256
+
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "iap2loc $GITHUB_REF_NAME" \
+              --notes "Windows x64 构建。程序本身不含 MFi 身份材料，需要自备 identity.pk8 + certificate.p7b。" || \
+              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" \
+            iap2loc-windows-x64.exe iap2loc-windows-x64.exe.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name'

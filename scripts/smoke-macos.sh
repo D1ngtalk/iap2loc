@@ -48,11 +48,20 @@ hdiutil attach -quiet -readonly -nobrowse -mountpoint "$MOUNT" "$DMG"
 for required in LICENSE README-macOS.md source.tar.gz; do
   test -f "$MOUNT/$required"
 done
-for flavor in 'iap2loc (Apple Silicon).app' 'iap2loc (Intel).app'; do
-  codesign --verify --deep --strict "$MOUNT/$flavor"
+# The CI DMG ships both flavours, the release DMG ships one; verify every bundle present.
+app_count=0
+for bundle in "$MOUNT"/*.app; do
+  [[ -d "$bundle" ]] || continue
+  codesign --verify --deep --strict "$bundle"
+  app_count=$((app_count + 1))
 done
+test "$app_count" -ge 1
 
 APP="$MOUNT/$APP_NAME"
+if [[ ! -d "$APP" ]]; then
+  APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' -print -quit)"
+fi
+test -n "$APP"
 BIN="$APP/Contents/MacOS/iap2loc"
 test -x "$BIN"
 test -f "$APP/Contents/MacOS/libiap2macbt.dylib"

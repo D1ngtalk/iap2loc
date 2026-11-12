@@ -43,16 +43,16 @@
 
 ## GitHub Actions 全自动构建 / 验证 / 分发
 
-构建不依赖开发者的 Mac mini。GitHub Actions 工作流在仓库分支有更新时自动触发：
-`https://github.com/shzxm/iap2loc/actions/workflows/macos-dmg.yml`
+构建不依赖开发者的 Mac。工作流 `.github/workflows/macos.yml` 在分支更新、PR 与版本标签时触发：
+
+`https://github.com/D1ngtalk/iap2loc/actions/workflows/macos.yml`
 
 流水线执行：
-1. **Intel GitHub-hosted `macos-15-intel` runner** 安装 .NET 10，编译通用 IOBluetooth 动态库与 ARM64、Intel 两个独立 .app。此步骤不依赖 Apple Silicon runner 的排队情况；
-2. ad-hoc 本地签名，打包包含许可证、源码和补丁的 DMG，生成 SHA256SUMS；
-3. **在 Intel 构建机上**直接挂载刚生成的 DMG，验证 SHA256、签名和 x86_64 可执行文件，启动 Intel app 并测试 HTTP 控制界面与 JSON API；
-4. **立刻上传已通过 Intel 验收的 DMG**、源码与校验和作为 Actions Artifacts，保留 30 天。即使后续 ARM64 runner 暂时分配不到，构建产物仍可下载；
-5. **另一台 Apple Silicon GitHub-hosted `macos-15` runner** 下载同一份 DMG，在 ARM64 CPU 上复验 SHA256、签名、ARM64 app 启动及 HTTP API。ARM64 验收独立于 Intel 的构建/上传，不能反过来阻断已上传的产物；
-6. 仅当用户 Fork `shzxm/iap2loc` 推送 `v*` 版本标签，且 Intel 与 ARM64 测试**全部成功**时，通过工作流发布 GitHub **Prerelease**，附 DMG、源码和校验和。不在 PR 或普通分支提交时自动创建 Release。
+1. **矩阵构建**：`macos-15`（Apple Silicon）产出 `iap2loc-macos-arm64.dmg`，`macos-15-intel`（Intel）产出 `iap2loc-macos-x64.dmg`；
+2. 每个架构各自编译通用 IOBluetooth 动态库、发布自包含 `.app`、ad-hoc 签名、打包 DMG 并生成 `SHA256SUMS`；
+3. **在自己的架构上验证**：挂载刚生成的 DMG，校验 SHA256、签名、可执行文件架构，启动程序并测试 HTTP 控制页面与 JSON API；
+4. 通过后上传 Actions Artifacts，保留 30 天；
+5. 仅当推送 `v*` 标签且两个架构都通过时，才创建 GitHub Release，附两个 DMG 与 `iap2loc-macos.sha256`。PR 与普通分支不会创建 Release。
 
 macOS 15 GitHub runner 的蓝牙硬件/iPhone 通常不可用。因此 CI 检测 DMG 可安装与可启动、正常调用程序和 Web API；不会伪称通过真实 iAP2、RFComm/MFi 连接、定位改变和授权。最终实机验收是单独的审核关口。
 

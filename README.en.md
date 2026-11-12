@@ -12,12 +12,12 @@ iOS fuses the result with its own sources: the accessory is only one input, not 
 
 ### 1. Prepare
 
-- Download `iap2loc.exe` from [Releases](https://github.com/D1ngtalk/iap2loc/releases), or [build](#build) your own. Either way you need a working MFi accessory identity (`identity.pk8` + `certificate.p7b`) placed in `./identity`; this repository contains no authentication material.
+- Download `iap2loc-windows-x64.exe` from [Releases](https://github.com/D1ngtalk/iap2loc/releases), or [build](#build) your own. Either way you need a working MFi accessory identity (`identity.pk8` + `certificate.p7b`) placed in `./identity`; this repository contains no authentication material.
 - Pair the iOS device in Windows Settings → Bluetooth & devices.
 
 ### 2. Connect
 
-1. Double-click `iap2loc.exe`; the console opens in your browser at <http://localhost:8737/>
+1. Double-click the downloaded executable; the console opens in your browser at <http://localhost:8737/>
 2. Pick the paired iOS device from the **Device** dropdown (only Apple devices are listed by default; tick "show all" to see everything)
 3. Click **Add** and confirm three key log lines:
    - `0x1D02 IdentificationAccepted` — identification accepted
