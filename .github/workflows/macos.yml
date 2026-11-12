@@ -119,6 +119,8 @@ jobs:
   publish:
     name: Attach both DMGs to the release
     needs: build
+    # Branch pushes and pull requests build the DMGs but must not touch a release.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -143,7 +145,10 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -euo pipefail
-          test -n "${RELEASE_TAG:-}"
+          if [ -z "${RELEASE_TAG:-}" ]; then
+            echo "RELEASE_TAG is empty; this job only runs for release or workflow_dispatch" >&2
+            exit 1
+          fi
 
           cd package
 
