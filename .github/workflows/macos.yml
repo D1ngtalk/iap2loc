@@ -1,17 +1,30 @@
-name: macOS CD (arm64 + x64 DMG)
+name: macOS build, smoke test and release
 
 on:
   push:
+    branches:
+      - main
+      - 'dev/**'
+      - feature/macos-iobluetooth-rfcomm-dmg
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - 'Native/**'
+      - 'scripts/**'
+      - 'Web/**'
+      - 'README-macOS.md'
+      - '.github/workflows/macos.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: iap2loc-macos-cd-${{ github.ref }}
-  cancel-in-progress: false
+  group: iap2loc-macos-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_NOLOGO: 'true'
@@ -36,8 +49,10 @@ jobs:
             runner: macos-15-intel
             machine: x86_64
     steps:
-      - name: Checkout
+      - name: Checkout full source history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
@@ -60,7 +75,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/package-macos-cd.sh "${{ matrix.arch }}" "dist/iap2loc-macos-${{ matrix.suffix }}.dmg"
+          bash scripts/package-macos.sh "${{ matrix.arch }}" "dist/iap2loc-macos-${{ matrix.suffix }}.dmg"
           ls -lh dist
 
       - name: Smoke-test the packaged DMG
@@ -114,6 +129,7 @@ jobs:
           test -f arm64/SHA256SUMS
           test -f x64/SHA256SUMS
 
+          # Distinct asset name: the Windows workflow publishes its own checksum file.
           cat arm64/SHA256SUMS x64/SHA256SUMS > iap2loc-macos.sha256
           cat iap2loc-macos.sha256
 
