@@ -11,7 +11,7 @@
     --accent: #185fa5; --ok: #0f6e56; --warn: #ba7517; --bad: #a32d2d;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+  body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column;
     font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
   header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
   header h1 { font-size: 14px; font-weight: 500; margin: 0; white-space: nowrap; }
@@ -35,6 +35,15 @@
   main { flex: 1; display: flex; min-height: 0; }
   #map { flex: 1; min-width: 0; }
   aside { width: 400px; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  @media (max-aspect-ratio: 4/3) {
+    header { flex-wrap: wrap; row-gap: 6px; }
+    header h1 { flex: 1 1 100%; }
+    header .spacer { display: none; }
+    main { flex-direction: column; }
+    #map { flex: none; height: 42vh; min-height: 220px; }
+    aside { width: auto; flex: 1; border-left: 0; border-top: 1px solid var(--line); }
+    #log { height: 140px; }
+  }
   .scroll { overflow: auto; padding: 12px 14px; flex: 1; }
   section { margin-bottom: 16px; }
   section h2 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 0 0 8px; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
@@ -146,9 +155,9 @@
           <div class="readout" id="walkProgress" style="display:none"><span>已走</span><span id="walkProgressText">—</span></div>
         </div>
         <div class="row"><label>随机偏移</label>
-          <input id="jitterPosition" type="checkbox" />
-          <input id="jitterMeters" class="compact" type="number" step="1" value="0" />
+          <input id="jitterMeters" type="number" min="0" step="1" value="0" />
           <span class="unit">m</span>
+          <span class="hint" style="margin:0">0 为关闭</span>
         </div>
         <div class="row"><label>精度</label>
           <span id="accuracyInput" class="row" style="display:flex; margin:0; flex:1">
@@ -274,7 +283,7 @@ const MODES = [
 const S = {
   mode: 'point',
   target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5, quality: 1, satellites: 8,
-            jitterPosition: false, jitterMeters: 10,
+            jitterMeters: 0,
             jitterAccuracy: false, accuracyMin: 3, accuracyMax: 12,
             jitterAltitude: false, altitudeMin: 5, altitudeMax: 20 },
   route: [],
@@ -545,11 +554,10 @@ function readInputs() {
   S.target.accuracy = num('accuracy', 5);
   S.target.alt = num('alt', 10);
   S.target.jitterAccuracy = el('jitterAccuracy').checked;
-  S.target.jitterPosition = el('jitterPosition').checked;
   S.target.jitterAltitude = el('jitterAltitude').checked;
   S.target.accuracyMin = num('accuracyMin', 3);
   S.target.accuracyMax = num('accuracyMax', 12);
-  S.target.jitterMeters = num('jitterMeters', 10);
+  S.target.jitterMeters = Math.max(0, num('jitterMeters', 0));
   const quality = parseInt(el('quality').value, 10);
   S.target.quality = Number.isFinite(quality) ? quality : 1;
   const satellites = parseInt(el('satellites').value, 10);
@@ -600,7 +608,7 @@ function buildPayload(tolerateEmptyRoute) {
     mode,
     latitude: S.target.lat, longitude: S.target.lon,
     altitude: S.target.alt, accuracy: S.target.accuracy,
-    jitterPosition: S.target.jitterPosition, jitterMeters: S.target.jitterMeters,
+    jitterMeters: S.target.jitterMeters,
     jitterAccuracy: S.target.jitterAccuracy, accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax,
     quality: S.target.quality, satellites: S.target.satellites,
     jitterAltitude: S.target.jitterAltitude, altitudeMin: S.target.altitudeMin, altitudeMax: S.target.altitudeMax,
@@ -633,7 +641,7 @@ async function applyTarget(options = {}) {
 }
 
 function updateResolved(target) {
-  const active = target.jitterPosition || target.jitterAccuracy || target.jitterAltitude;
+  const active = target.jitterMeters > 0 || target.jitterAccuracy || target.jitterAltitude;
   el('resolvedRow').style.display = active ? 'flex' : 'none';
   if (!active) return;
 
@@ -664,7 +672,7 @@ function renderApplied(target) {
   el(id).addEventListener('input', onEdited);
 });
 el('quality').addEventListener('change', onEdited);
-['jitterAccuracy','jitterPosition','jitterAltitude','walkLoop'].forEach(id => {
+['jitterAccuracy','jitterAltitude','walkLoop'].forEach(id => {
   el(id).addEventListener('change', onEdited);
 });
 
@@ -960,6 +968,15 @@ el('favorites').addEventListener('click', async event => {
 
 buildModes();
 initMap();
+
+// The panel flips above/below the map on aspect-ratio changes; Leaflet must re-measure.
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (!map) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => map.invalidateSize(), 150);
+});
+
 renderTarget(true);
 renderModes();
 markClean();

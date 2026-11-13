@@ -35,7 +35,6 @@ internal sealed class LocationTarget
     private double? _accuracyMeters;
     private double? _speedMetersPerSecond;
     private double? _bearingDegrees;
-    private bool _jitterPosition;
     private double _jitterMeters;
     private bool _jitterAccuracy;
     private double _accuracyMinMeters = 3;
@@ -77,7 +76,6 @@ internal sealed class LocationTarget
             var oldLongitude = _longitude;
             var oldAccuracy = _accuracyMeters;
             var oldAltitude = _altitudeMeters;
-            var oldJitterPosition = _jitterPosition;
             var oldJitterMeters = _jitterMeters;
             var oldJitterAccuracy = _jitterAccuracy;
             var oldAccuracyMin = _accuracyMinMeters;
@@ -131,7 +129,6 @@ internal sealed class LocationTarget
             if (update.Accuracy is { } accuracy) _accuracyMeters = accuracy;
             if (update.Speed is { } pointSpeed) _speedMetersPerSecond = pointSpeed;
             if (update.Bearing is { } bearing) _bearingDegrees = bearing;
-            if (update.JitterPosition is { } jitterPosition) _jitterPosition = jitterPosition;
             if (update.JitterMeters is { } jitterMeters) _jitterMeters = Math.Max(0, jitterMeters);
             if (update.JitterAccuracy is { } jitterAccuracy) _jitterAccuracy = jitterAccuracy;
             if (update.AccuracyMin is { } minimum) _accuracyMinMeters = Math.Max(0.1, minimum);
@@ -151,8 +148,7 @@ internal sealed class LocationTarget
             // The jitter is rolled once per real change. The UI re-sends every field on each
             // keystroke, so identical values must not re-roll behind the user's back.
             var positionChanged = _latitude != oldLatitude || _longitude != oldLongitude;
-            var jitterChanged = _jitterPosition != oldJitterPosition ||
-                                Math.Abs(_jitterMeters - oldJitterMeters) > 1e-9 ||
+            var jitterChanged = Math.Abs(_jitterMeters - oldJitterMeters) > 1e-9 ||
                                 _jitterAccuracy != oldJitterAccuracy ||
                                 Math.Abs(_accuracyMinMeters - oldAccuracyMin) > 1e-9 ||
                                 Math.Abs(_accuracyMaxMeters - oldAccuracyMax) > 1e-9 ||
@@ -186,7 +182,7 @@ internal sealed class LocationTarget
             return new TargetState(
                 _mode,
                 _latitude, _longitude, _altitudeMeters, _accuracyMeters, _speedMetersPerSecond, _bearingDegrees,
-                _jitterPosition, _jitterMeters, _jitterAccuracy, _accuracyMinMeters, _accuracyMaxMeters,
+                _jitterMeters, _jitterAccuracy, _accuracyMinMeters, _accuracyMaxMeters,
                 _jitterAltitude, _altitudeMinMeters, _altitudeMaxMeters,
                 _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters, _resolvedAltitudeMeters,
                 _route?.Count ?? 0, _route?.LengthMeters ?? 0,
@@ -255,7 +251,7 @@ internal sealed class LocationTarget
         _resolvedAccuracyMeters = _accuracyMeters;
         _resolvedAltitudeMeters = _altitudeMeters;
 
-        if (_jitterPosition && _jitterMeters > 0)
+        if (_jitterMeters > 0)
         {
             // Uniform inside a disc, so the offset is not biased towards the centre.
             var angle = Random.Shared.NextDouble() * Math.PI * 2;
@@ -295,7 +291,6 @@ internal sealed record TargetUpdate
     public double? Accuracy { get; init; }
     public double? Speed { get; init; }
     public double? Bearing { get; init; }
-    public bool? JitterPosition { get; init; }
     public double? JitterMeters { get; init; }
     public bool? JitterAccuracy { get; init; }
     public double? AccuracyMin { get; init; }
@@ -315,7 +310,6 @@ internal sealed record TargetState(
     double? Accuracy,
     double? Speed,
     double? Bearing,
-    bool JitterPosition,
     double JitterMeters,
     bool JitterAccuracy,
     double AccuracyMin,

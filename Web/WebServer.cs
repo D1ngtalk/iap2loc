@@ -411,7 +411,6 @@ internal sealed class WebServer : IDisposable
         public double? Accuracy { get; set; }
         public double? Speed { get; set; }
         public double? Bearing { get; set; }
-        public bool? JitterPosition { get; set; }
         public double? JitterMeters { get; set; }
         public bool? JitterAccuracy { get; set; }
         public double? AccuracyMin { get; set; }
@@ -435,7 +434,6 @@ internal sealed class WebServer : IDisposable
             Accuracy = Accuracy,
             Speed = Speed,
             Bearing = Bearing,
-            JitterPosition = JitterPosition,
             JitterMeters = JitterMeters,
             JitterAccuracy = JitterAccuracy,
             AccuracyMin = AccuracyMin,
