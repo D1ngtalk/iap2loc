@@ -453,14 +453,14 @@ internal sealed class WebServer : IDisposable
         };
 
         /// <summary>null keeps the current route; an empty array clears it.</summary>
-        private static IReadOnlyList<GeoPoint>? ParseRoute(List<RoutePointPayload>? points)
+        private static IReadOnlyList<RouteVertex>? ParseRoute(List<RoutePointPayload>? points)
         {
             if (points is null)
             {
                 return null;
             }
 
-            var parsed = new List<GeoPoint>(Math.Min(points.Count, LocationTarget.MaxRoutePoints));
+            var parsed = new List<RouteVertex>(Math.Min(points.Count, LocationTarget.MaxRoutePoints));
             foreach (var point in points)
             {
                 if (point.Latitude is not { } latitude || point.Longitude is not { } longitude)
@@ -475,7 +475,10 @@ internal sealed class WebServer : IDisposable
                 }
 
                 var altitude = point.Altitude is { } value && !double.IsNaN(value) ? value : (double?)null;
-                parsed.Add(new GeoPoint(latitude, longitude, altitude));
+                var time = point.Time is { } milliseconds && !double.IsNaN(milliseconds) && milliseconds > 0
+                    ? milliseconds / 1000.0
+                    : (double?)null;
+                parsed.Add(new RouteVertex(new GeoPoint(latitude, longitude, altitude), time));
 
                 if (parsed.Count >= LocationTarget.MaxRoutePoints)
                 {
@@ -492,6 +495,9 @@ internal sealed class WebServer : IDisposable
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
+
+        /// <summary>GPX timestamp in epoch milliseconds.</summary>
+        public double? Time { get; set; }
     }
 
     private sealed class StartSessionPayload

@@ -187,7 +187,10 @@ internal sealed class LocationSession : IDisposable
             var state = _target.Snapshot();
             Log.Info(state.Mode == TargetMode.Walk
                 ? $"streaming {PlannedInterval()} ms NMEA along {state.RoutePoints} points " +
-                  $"({state.RouteLengthMeters / 1000:F2} km at {state.WalkSpeedMps * 3.6:F1} km/h)"
+                  (state.WalkTimed
+                      ? $"({state.RouteLengthMeters / 1000:F2} km over " +
+                        $"{TimeSpan.FromSeconds(state.WalkDurationSeconds):hh\\:mm\\:ss} of GPX time)"
+                      : $"({state.RouteLengthMeters / 1000:F2} km at {state.WalkSpeedMps * 3.6:F1} km/h)")
                 : $"streaming {PlannedInterval()} ms NMEA for {state.Latitude:F6},{state.Longitude:F6}");
             _timer = new Timer(_ => Push(), null, 0, Timeout.Infinite);
         }

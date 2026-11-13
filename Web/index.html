@@ -325,7 +325,8 @@ function initMap() {
 function addOnMap(lat, lon) {
   const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
   if (S.mode === 'walk') {
-    S.route.push({ lat: +wLat.toFixed(6), lon: +wLon.toFixed(6), alt: null });
+    S.route.forEach(point => { point.time = null; });
+    S.route.push({ lat: +wLat.toFixed(6), lon: +wLon.toFixed(6), alt: null, time: null });
     renderRoute();
     markDirty();
     return;
@@ -441,10 +442,31 @@ function renderRoute() {
 }
 
 function renderRouteInfo() {
-  const length = routeLength();
-  el('routeInfo').textContent = S.route.length === 0
-    ? '未添加'
-    : S.route.length + ' 个点 · ' + (length / 1000).toFixed(2) + ' km';
+  if (S.route.length === 0) {
+    el('routeInfo').textContent = '未添加';
+    el('walkSpeed').disabled = false;
+    return;
+  }
+
+  const duration = routeDuration();
+  el('walkSpeed').disabled = duration > 0;
+  el('routeInfo').textContent = S.route.length + ' 个点 · ' + (routeLength() / 1000).toFixed(2) + ' km' +
+    (duration > 0 ? ' · ' + formatDuration(duration) : '');
+}
+
+function routeDuration() {
+  if (S.route.length < 2 || !S.route.every(point => point.time != null)) return 0;
+  const span = (S.route[S.route.length - 1].time - S.route[0].time) / 1000;
+  return span > 0 ? span : 0;
+}
+
+function formatDuration(seconds) {
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total % 3600 / 60);
+  const rest = total % 60;
+  const pad = value => String(value).padStart(2, '0');
+  return hours > 0 ? hours + ':' + pad(minutes) + ':' + pad(rest) : minutes + ':' + pad(rest);
 }
 
 function routeLength() {
@@ -498,7 +520,9 @@ el('gpxFile').addEventListener('change', async event => {
   renderModes();
   fitRoute();
   markDirty();
-  notify('已导入 ' + S.route.length + ' 个点，' + (routeLength() / 1000).toFixed(2) + ' km');
+  const duration = routeDuration();
+  notify('已导入 ' + S.route.length + ' 个点，' + (routeLength() / 1000).toFixed(2) + ' km' +
+    (duration > 0 ? '，时长 ' + formatDuration(duration) : ''));
 });
 
 function parseGpx(text) {
@@ -524,10 +548,21 @@ function parseGpx(text) {
       if (Number.isFinite(value)) alt = value;
     }
 
+    let time = null;
+    const stamp = node.getElementsByTagName('time')[0];
+    if (stamp) {
+      const value = Date.parse(stamp.textContent.trim());
+      if (Number.isFinite(value)) time = value;
+    }
+
     const last = points[points.length - 1];
     if (last && Math.abs(last.lat - lat) < 1e-7 && Math.abs(last.lon - lon) < 1e-7) return;
-    points.push({ lat: +lat.toFixed(6), lon: +lon.toFixed(6), alt });
+    points.push({ lat: +lat.toFixed(6), lon: +lon.toFixed(6), alt, time });
   });
+
+  if (!points.every(point => point.time != null)) {
+    points.forEach(point => { point.time = null; });
+  }
 
   return points;
 }
@@ -617,7 +652,7 @@ function buildPayload(tolerateEmptyRoute) {
     rate: S.rate,
     walkSpeedKmh: S.walkSpeed, walkLoop: S.walkLoop,
     route: mode === 'walk'
-      ? S.route.map(point => ({ latitude: point.lat, longitude: point.lon, altitude: point.alt }))
+      ? S.route.map(point => ({ latitude: point.lat, longitude: point.lon, altitude: point.alt, time: point.time }))
       : null
   };
 }

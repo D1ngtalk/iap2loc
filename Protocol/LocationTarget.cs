@@ -51,6 +51,7 @@ internal sealed class LocationTarget
     private bool _walkLoop = true;
     private long _walkAnchorTicks = Environment.TickCount64;
     private double _walkAnchorMeters;
+    private double _walkAnchorSeconds;
 
     // Rolled once per target change, then reused by every fix. A point that keeps re-rolling
     // every second looks like a broken GPS, not like a real one.
@@ -92,11 +93,11 @@ internal sealed class LocationTarget
                 restartWalk = true;
             }
 
-            if (update.Route is { } points)
+            if (update.Route is { } vertices)
             {
-                var route = points.Count == 0
+                var route = vertices.Count == 0
                     ? null
-                    : new RoutePath(points.Take(MaxRoutePoints));
+                    : new RoutePath(vertices.Take(MaxRoutePoints));
 
                 var signature = route?.Signature ?? 0;
                 if (signature != _routeSignature || (route?.Count ?? 0) != (_route?.Count ?? 0))
@@ -142,6 +143,7 @@ internal sealed class LocationTarget
             if (restartWalk)
             {
                 _walkAnchorMeters = 0;
+                _walkAnchorSeconds = 0;
                 _walkAnchorTicks = Environment.TickCount64;
             }
 
@@ -186,8 +188,10 @@ internal sealed class LocationTarget
                 _jitterAltitude, _altitudeMinMeters, _altitudeMaxMeters,
                 _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters, _resolvedAltitudeMeters,
                 _route?.Count ?? 0, _route?.LengthMeters ?? 0,
-                _route is null ? 0 : Travelled(),
-                _walkSpeedMps, _walkLoop, _quality, _satellites);
+                _route is null ? 0 : CurrentSample().DistanceMeters,
+                _walkSpeedMps, _walkLoop,
+                _route?.DurationSeconds ?? 0, _route?.HasTimeline ?? false,
+                _quality, _satellites);
         }
     }
 
@@ -198,12 +202,12 @@ internal sealed class LocationTarget
         {
             if (_mode == TargetMode.Walk && _route is { IsUsable: true } route)
             {
-                var sample = route.At(Travelled());
+                var sample = CurrentSample();
                 return new LocationFix(
                     sample.Point.Latitude,
                     sample.Point.Longitude,
                     sample.Point.Altitude ?? _resolvedAltitudeMeters,
-                    _walkSpeedMps,
+                    route.HasTimeline ? sample.SpeedMetersPerSecond : _walkSpeedMps,
                     sample.Bearing,
                     _resolvedAccuracyMeters,
                     _quality,
@@ -216,30 +220,41 @@ internal sealed class LocationTarget
         }
     }
 
-    /// <summary>Distance travelled along the route right now, wrapped when the walk loops.</summary>
-    private double Travelled()
+    /// <summary>Where the walk is right now: GPX timing when available, constant speed otherwise.</summary>
+    private RouteSample CurrentSample()
     {
-        if (_route is not { IsUsable: true } route)
+        var route = _route!;
+        var elapsed = Math.Max(0, Environment.TickCount64 - _walkAnchorTicks) / 1000.0;
+
+        if (route.HasTimeline)
         {
-            return 0;
+            return route.AtTime(_walkAnchorSeconds + elapsed, _walkLoop);
         }
 
-        var elapsed = Math.Max(0, Environment.TickCount64 - _walkAnchorTicks) / 1000.0;
         var distance = _walkAnchorMeters + _walkSpeedMps * elapsed;
         var length = route.LengthMeters;
-
         if (length <= 0)
         {
-            return 0;
+            return route.At(0);
         }
 
-        return _walkLoop ? distance % length : Math.Min(distance, length);
+        return route.At(_walkLoop ? distance % length : Math.Min(distance, length));
     }
 
     /// <summary>Keeps the current position when speed or looping changes mid-walk.</summary>
     private void RebaseWalk()
     {
-        _walkAnchorMeters = Travelled();
+        var elapsed = Math.Max(0, Environment.TickCount64 - _walkAnchorTicks) / 1000.0;
+
+        if (_route is { HasTimeline: true })
+        {
+            _walkAnchorSeconds += elapsed;
+        }
+        else if (_route is { IsUsable: true })
+        {
+            _walkAnchorMeters = CurrentSample().DistanceMeters;
+        }
+
         _walkAnchorTicks = Environment.TickCount64;
     }
 
@@ -281,7 +296,7 @@ internal sealed record TargetUpdate
     public TargetMode? Mode { get; init; }
 
     /// <summary>null keeps the current route, an empty list clears it.</summary>
-    public IReadOnlyList<GeoPoint>? Route { get; init; }
+    public IReadOnlyList<RouteVertex>? Route { get; init; }
 
     public double? WalkSpeedMps { get; init; }
     public bool? WalkLoop { get; init; }
@@ -326,5 +341,7 @@ internal sealed record TargetState(
     double WalkTravelledMeters,
     double WalkSpeedMps,
     bool WalkLoop,
+    double WalkDurationSeconds,
+    bool WalkTimed,
     int Quality,
     int Satellites);
