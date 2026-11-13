@@ -137,6 +137,7 @@ identity/
 ## Notes
 
 - **Read the log first**: `--probe` tells you whether identification is accepted without touching authentication; `-v` prints the full protocol exchange.
+- **Long jumps**: the frame that moves more than 100 m reports 250 m/s (about 900 km/h) and the bearing towards the target, then falls back to stationary, so the receiver never sees "stationary + teleport".
 - **Legal**: use this only on devices you own, for protocol research and privacy testing. Using a spoofed location for attendance, ride-hailing, insurance mileage or games may constitute fraud or breach of contract; an MFi identity of unknown origin may violate Apple's terms. No authentication material is provided here, and you are responsible for the legitimacy of whatever identity you supply.
 
 ## License

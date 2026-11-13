@@ -21,10 +21,19 @@ internal sealed class LocationSession : IDisposable
     private volatile Subscription? _subscription;
     private readonly Dictionary<int, long> _lastSent = new();
     private readonly object _pushGate = new();
+    private double _lastFixLatitude;
+    private double _lastFixLongitude;
+    private bool _hasLastFix;
     private int _intervalMs;
     private NmeaSentences _sentences;
     private int _pushed;
     private bool _disposed;
+
+    /// <summary>A displacement beyond this is a new target, not jitter or walking.</summary>
+    private const double JumpThresholdMeters = 100;
+
+    /// <summary>Reported on the jump frame: about 900 km/h, an airliner rather than a teleport.</summary>
+    private const double JumpSpeedMetersPerSecond = 250;
 
     /// <summary>What the phone asked for in 0xFFFA: sentence ids 1/2 and optional periods.</summary>
     private sealed record Subscription(HashSet<int> Sentences, Dictionary<int, int> RequestedMs);
@@ -205,14 +214,15 @@ internal sealed class LocationSession : IDisposable
             {
                 var now = DateTime.UtcNow;
                 var fix = _target.Next();
+                var (speed, bearing) = MotionFor(fix);
                 var subscription = _subscription;
 
                 var nmea = Nmea.Encode(
                     fix.Latitude,
                     fix.Longitude,
                     fix.AltitudeMeters,
-                    fix.BearingDegrees,
-                    fix.SpeedMetersPerSecond,
+                    bearing,
+                    speed,
                     fix.AccuracyMeters,
                     now,
                     _sentences);
@@ -244,6 +254,15 @@ internal sealed class LocationSession : IDisposable
                 }
 
                 _link.Send(0xFFFB, parameters.ToArray());
+
+                // Only RMC carries speed and course, so the jump marker is consumed when RMC goes out.
+                if (sent.Contains(2))
+                {
+                    _lastFixLatitude = fix.Latitude;
+                    _lastFixLongitude = fix.Longitude;
+                    _hasLastFix = true;
+                }
+
                 foreach (var id in sent)
                 {
                     _lastSent[id] = tick;
@@ -264,6 +283,31 @@ internal sealed class LocationSession : IDisposable
         {
             Rearm();
         }
+    }
+
+    /// <summary>
+    /// A 1000 km jump with GPRMC speed 0 is a contradiction, and a receiver is likely to throw the fix
+    /// away. On the frame that jumps, report a cruise speed and the bearing towards the new point; the
+    /// next frame falls back to the target's own speed (usually 0), which is what a parked car looks like.
+    /// </summary>
+    private (double? Speed, double? Bearing) MotionFor(LocationFix fix)
+    {
+        if (!_hasLastFix)
+        {
+            return (fix.SpeedMetersPerSecond, fix.BearingDegrees);
+        }
+
+        var from = new GeoPoint(_lastFixLatitude, _lastFixLongitude);
+        var to = new GeoPoint(fix.Latitude, fix.Longitude);
+        var distance = Geo.Distance(from, to);
+        if (distance < JumpThresholdMeters)
+        {
+            return (fix.SpeedMetersPerSecond, fix.BearingDegrees);
+        }
+
+        var bearing = Geo.Bearing(from, to);
+        Log.Info($"位置跳变 {distance / 1000:F1} km，该帧按 {JumpSpeedMetersPerSecond:F0} m/s、航向 {bearing:F0}° 上报");
+        return (JumpSpeedMetersPerSecond, bearing);
     }
 
     /// <summary>A sentence is due when its own period elapsed; the device period wins when it asked for one.</summary>
