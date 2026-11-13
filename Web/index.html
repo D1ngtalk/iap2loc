@@ -127,13 +127,24 @@
         <details>
           <summary>高级设置</summary>
           <div class="row"><label>周期 ms</label><input id="rate" type="number" min="10" step="10" value="250" /></div>
-          <div class="row"><label>句子集</label>
-            <select id="sentences">
-              <option value="gga,rmc">GGA + RMC</option>
-              <option value="gga,rmc,gsa,gsv">GGA + RMC + GSA + GSV</option>
+          <div class="row"><label>定位质量</label>
+            <select id="quality">
+              <option value="0">0 · 无效</option>
+              <option value="1" selected>1 · GPS 单点</option>
+              <option value="2">2 · DGPS</option>
+              <option value="3">3 · PPS</option>
+              <option value="4">4 · RTK 固定</option>
+              <option value="5">5 · RTK 浮动</option>
+              <option value="6">6 · 估算</option>
+              <option value="7">7 · 人工</option>
+              <option value="8">8 · 模拟</option>
             </select>
           </div>
-          <div class="row"><label>身份目录</label><input id="identity" placeholder="留空 = 用内置身份" /></div>
+          <div class="row"><label>卫星数</label><input id="satellites" type="number" min="0" max="99" step="1" value="8" /></div>
+          <div class="row"><label>MFi密钥</label><input id="identity" placeholder="留空 = 用内置密钥" /></div>
+          <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
+          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换身份与蓝牙地址</button></div>
+          <p class="hint">启动时已自动换过一次；按钮会同时更换身份和蓝牙地址，对之后新添加的设备生效。</p>
           <div class="row"><label>传输</label>
             <select id="transport">
               <option value="bt">蓝牙 RFCOMM</option>
@@ -144,7 +155,7 @@
           <div class="row" id="rowPort" style="display:none"><label>TCP 端口</label><input id="port" type="number" value="8738" /></div>
           <div class="row"><label>精度范围</label><input id="accuracyMin" type="number" step="0.1" value="3" /><input id="accuracyMax" type="number" step="0.1" value="12" /></div>
           <div class="row"><label>偏移半径</label><input id="jitterMeters" type="number" step="1" value="10" /></div>
-          <p class="hint">周期实时生效；句子集与身份目录对之后新加的设备生效。</p>
+          <p class="hint">周期、定位质量与卫星数实时生效；MFi 密钥对之后新加的设备生效。</p>
         </details>
       </section>
     </div>
@@ -191,10 +202,10 @@ function gcj2wgs(lat, lon) {
 
 const el = id => document.getElementById(id);
 const S = {
-  target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5,
+  target: { lat: 31.2304, lon: 121.4737, alt: 10, accuracy: 5, quality: 1, satellites: 8,
             jitterPosition: false, jitterMeters: 10, jitterAccuracy: false,
             accuracyMin: 3, accuracyMax: 12 },
-  rate: 250, sentences: 'gga,rmc', identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
+  rate: 250, identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
   datum: 'wgs', sessions: [], devices: [], favorites: [], editing: false
 };
 
@@ -260,8 +271,11 @@ function readInputs() {
   S.target.accuracyMin = num('accuracyMin', 3);
   S.target.accuracyMax = num('accuracyMax', 12);
   S.target.jitterMeters = num('jitterMeters', 10);
+  const quality = parseInt(el('quality').value, 10);
+  S.target.quality = Number.isFinite(quality) ? quality : 1;
+  const satellites = parseInt(el('satellites').value, 10);
+  S.target.satellites = Number.isFinite(satellites) ? Math.max(0, Math.min(99, satellites)) : 8;
   S.rate = num('rate', 250);
-  S.sentences = el('sentences').value;
   S.identity = el('identity').value.trim();
   S.transport = el('transport').value;
   S.host = el('host').value.trim();
@@ -303,7 +317,8 @@ async function applyTarget() {
     latitude: S.target.lat, longitude: S.target.lon, altitude: S.target.alt,
     accuracy: S.target.accuracy, jitterPosition: S.target.jitterPosition,
     jitterMeters: S.target.jitterMeters, jitterAccuracy: S.target.jitterAccuracy,
-    accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax, rate: S.rate
+    accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax, rate: S.rate,
+    quality: S.target.quality, satellites: S.target.satellites
   });
 
   if (result && result.ok) {
@@ -325,9 +340,10 @@ function updateResolved(target) {
     target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6) + ' · ' + accuracy;
 }
 
-['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','rate'].forEach(id => {
+['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','rate','satellites'].forEach(id => {
   el(id).addEventListener('input', onEdited);
 });
+el('quality').addEventListener('change', onEdited);
 ['jitterAccuracy','jitterPosition'].forEach(id => {
   el(id).addEventListener('change', onEdited);
 });
@@ -393,7 +409,7 @@ el('addDevice').addEventListener('click', async () => {
   const result = await postJson('/api/sessions', {
     transport: S.transport, mac: bt ? mac : null,
     host: bt ? null : S.host, port: bt ? null : S.port,
-    identity: S.identity, rate: S.rate, sentences: S.sentences,
+    identity: S.identity, rate: S.rate,
     label: bt ? (option ? option.textContent.split(' · ')[0] : mac) : (S.host + ':' + S.port)
   });
   if (!result.ok) appendLog({ time: '', level: 'error', text: result.error || '添加失败' });
@@ -406,6 +422,18 @@ async function removeSession(id) {
 }
 
 el('stopAll').addEventListener('click', async () => { await postJson('/api/stop-all'); pollState(); });
+
+el('rotateIdentity').addEventListener('click', async () => {
+  const result = await postJson('/api/identity/rotate', {});
+  if (!result || !result.ok) {
+    appendLog({ time: '', level: 'error', text: (result && result.error) || '更换身份失败' });
+    return;
+  }
+  renderIdentity(result.identity);
+  appendLog({ time: '', level: 'ok', text: '配件身份已更换：' + result.identity.serial +
+    (result.identity.adapter ? ' · ' + result.identity.adapter : '') + '，新添加的设备生效' });
+  pollState();
+});
 
 el('favorite').addEventListener('click', async () => {
   readInputs();
@@ -480,6 +508,16 @@ function pillState(state) {
   S.sessions = state.sessions || [];
   renderSessions();
   renderWarning(state.warning);
+  renderIdentity(state.identity);
+}
+
+function renderIdentity(identity) {
+  if (!identity) return;
+  el('identityText').textContent =
+    identity.serial + ' · ' + identity.model + (identity.adapter ? ' · BT 改写' : '');
+  el('identityText').title = identity.adapter
+    ? '蓝牙地址 ' + identity.adapter + '\n' + (identity.path || '')
+    : (identity.path || '');
 }
 
 function renderWarning(text) {

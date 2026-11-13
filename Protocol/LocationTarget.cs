@@ -6,7 +6,9 @@ internal readonly record struct LocationFix(
     double? AltitudeMeters,
     double? SpeedMetersPerSecond,
     double? BearingDegrees,
-    double? AccuracyMeters);
+    double? AccuracyMeters,
+    int Quality,
+    int Satellites);
 
 /// <summary>
 /// The live target shared by every running session. Changing it takes effect on the next
@@ -27,6 +29,8 @@ internal sealed class LocationTarget
     private bool _jitterAccuracy;
     private double _accuracyMinMeters = 3;
     private double _accuracyMaxMeters = 12;
+    private int _quality = 1;
+    private int _satellites = 8;
 
     // Rolled once per target change, then reused by every fix. A point that keeps re-rolling
     // every second looks like a broken GPS, not like a real one.
@@ -65,6 +69,8 @@ internal sealed class LocationTarget
             if (update.JitterAccuracy is { } jitterAccuracy) _jitterAccuracy = jitterAccuracy;
             if (update.AccuracyMin is { } minimum) _accuracyMinMeters = Math.Max(0.1, minimum);
             if (update.AccuracyMax is { } maximum) _accuracyMaxMeters = Math.Max(_accuracyMinMeters, maximum);
+            if (update.Quality is { } quality) _quality = Math.Clamp(quality, 0, 8);
+            if (update.Satellites is { } satellites) _satellites = Math.Clamp(satellites, 0, 99);
 
             // The jitter is rolled once per real change. The UI re-sends every field on each
             // keystroke, so identical values must not re-roll behind the user's back.
@@ -93,7 +99,7 @@ internal sealed class LocationTarget
             return new TargetState(
                 _latitude, _longitude, _altitudeMeters, _accuracyMeters, _speedMetersPerSecond, _bearingDegrees,
                 _jitterPosition, _jitterMeters, _jitterAccuracy, _accuracyMinMeters, _accuracyMaxMeters,
-                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters);
+                _resolvedLatitude, _resolvedLongitude, _resolvedAccuracyMeters, _quality, _satellites);
         }
     }
 
@@ -104,7 +110,7 @@ internal sealed class LocationTarget
         {
             return new LocationFix(
                 _resolvedLatitude, _resolvedLongitude, _altitudeMeters,
-                _speedMetersPerSecond, _bearingDegrees, _resolvedAccuracyMeters);
+                _speedMetersPerSecond, _bearingDegrees, _resolvedAccuracyMeters, _quality, _satellites);
         }
     }
 
@@ -154,6 +160,8 @@ internal sealed record TargetUpdate
     public bool? JitterAccuracy { get; init; }
     public double? AccuracyMin { get; init; }
     public double? AccuracyMax { get; init; }
+    public int? Quality { get; init; }
+    public int? Satellites { get; init; }
 }
 
 internal sealed record TargetState(
@@ -170,4 +178,6 @@ internal sealed record TargetState(
     double AccuracyMax,
     double ResolvedLatitude,
     double ResolvedLongitude,
-    double? ResolvedAccuracy);
+    double? ResolvedAccuracy,
+    int Quality,
+    int Satellites);

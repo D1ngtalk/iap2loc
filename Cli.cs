@@ -81,6 +81,11 @@ internal sealed class Options
         Text(key) is { } raw && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
+
+    public int? NullableInt(string key) =>
+        Text(key) is { } raw && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
 }
 
 internal static class Log

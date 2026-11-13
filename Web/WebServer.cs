@@ -136,6 +136,10 @@ internal sealed class WebServer : IDisposable
                         RespondJson(stream, new { ok = true });
                         return;
 
+                    case "/api/identity/rotate" when method == "POST":
+                        RespondJson(stream, RotateIdentity());
+                        return;
+
                     case "/api/favorites" when method == "POST":
                         RespondJson(stream, AddFavorite(body));
                         return;
@@ -207,12 +211,27 @@ internal sealed class WebServer : IDisposable
             Port = payload.Port ?? 0,
             IdentityDirectory = payload.Identity,
             Rate = payload.Rate ?? 250,
-            Sentences = payload.Sentences,
             Label = string.IsNullOrWhiteSpace(payload.Label) ? (payload.Mac ?? "iPhone") : payload.Label!,
         };
 
         var session = _manager.Add(request);
         return new { ok = session.Error is null, error = session.Error, id = session.Id };
+    }
+
+    private object RotateIdentity()
+    {
+        var profile = _manager.RotateIdentity(BluetoothDevices.TryGetLocalAdapterAddress());
+        return new
+        {
+            ok = true,
+            identity = new
+            {
+                name = profile.Name,
+                model = profile.Model,
+                serial = profile.Serial,
+                adapter = profile.AdapterAddress,
+            },
+        };
     }
 
     private object RemoveSession(string body)
@@ -391,6 +410,8 @@ internal sealed class WebServer : IDisposable
         public bool? JitterAccuracy { get; set; }
         public double? AccuracyMin { get; set; }
         public double? AccuracyMax { get; set; }
+        public int? Quality { get; set; }
+        public int? Satellites { get; set; }
         public int? Rate { get; set; }
 
         public TargetUpdate ToUpdate() => new()
@@ -406,6 +427,8 @@ internal sealed class WebServer : IDisposable
             JitterAccuracy = JitterAccuracy,
             AccuracyMin = AccuracyMin,
             AccuracyMax = AccuracyMax,
+            Quality = Quality,
+            Satellites = Satellites,
         };
     }
 
@@ -417,7 +440,6 @@ internal sealed class WebServer : IDisposable
         public int? Port { get; set; }
         public string? Identity { get; set; }
         public int? Rate { get; set; }
-        public string? Sentences { get; set; }
         public string? Label { get; set; }
     }
 

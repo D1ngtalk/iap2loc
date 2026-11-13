@@ -79,8 +79,16 @@ internal static class Program
     private static int RunWeb(Options options, bool openBrowser = false)
     {
         var port = options.Int("port", 8737);
-        var manager = new SessionManager(options.Double("lat", 31.2304), options.Double("lon", 121.4737));
-        var favorites = new FavoriteStore();
+        var config = AppConfig.Load(options.Text("config"));
+        config.RotateIdentityOnStart = !options.Flag("fixed-identity");
+        config.UseAdapterOverride = !options.Flag("fixed-adapter");
+        config.PrepareForRun(BluetoothDevices.TryGetLocalAdapterAddress());
+
+        var manager = new SessionManager(
+            options.Double("lat", 31.2304),
+            options.Double("lon", 121.4737),
+            config);
+        var favorites = new FavoriteStore(config);
 
         // Let a custom build warm up its identity source before any session starts.
         IdentitySource.Prime();
@@ -165,30 +173,49 @@ internal static class Program
                      "The phone ignores location data from an unauthenticated accessory.");
         }
 
+        var config = AppConfig.Load(options.Text("config"));
+        config.RotateIdentityOnStart = !options.Flag("fixed-identity");
+        config.UseAdapterOverride = !options.Flag("fixed-adapter");
+
+        var localAdapter = BluetoothDevices.TryGetLocalAdapterAddress();
+        config.PrepareForRun(localAdapter);
+
+        // Command line overrides apply to this run only; the file keeps the generated identity.
+        var effective = config.EffectiveProfile;
+        var profile = effective with
+        {
+            Name = options.Text("name", effective.Name),
+            Model = options.Text("model", effective.Model),
+            Manufacturer = options.Text("manufacturer", effective.Manufacturer),
+            Serial = options.Text("serial", effective.Serial),
+            Firmware = options.Text("firmware", effective.Firmware),
+            Hardware = options.Text("hardware", effective.Hardware),
+        };
+
+        var identity = profile.ToIdentity();
+
         using var transport = OpenTransport(transportName, options);
 
         byte[]? bluetoothAdapter = null;
         if (transportName is "bt" or "bluetooth")
         {
-            bluetoothAdapter = BluetoothDevices.TryGetLocalAdapterAddress();
+            var reported = profile.AdapterOverride();
+            bluetoothAdapter = reported ?? localAdapter;
             if (bluetoothAdapter is null)
             {
                 Log.Warn("could not read the local Bluetooth adapter address; iOS rejects identification " +
                          "without transport component 17");
+            }
+            else if (reported is not null)
+            {
+                Log.Info($"reported Bluetooth address {string.Join(':', reported.Select(b => b.ToString("X2")))} " +
+                         "(generated on first run, stored in the config file)");
             }
             else
             {
                 Log.Info($"local Bluetooth adapter {string.Join(':', bluetoothAdapter.Select(b => b.ToString("X2")))}");
             }
         }
-
-        var identity = new AccessoryIdentity(
-            options.Text("name", "iAP2 Loc"),
-            options.Text("model", "Loc1,1"),
-            options.Text("manufacturer", "carplay-loc"),
-            options.Text("serial", "LOC000000001"),
-            options.Text("firmware", "0.1.0"),
-            options.Text("hardware", "1.0"));
 
         var target = new LocationTarget(
             options.Double("lat", 31.2304),
@@ -200,6 +227,8 @@ internal static class Program
             Speed = options.NullableDouble("speed"),
             Bearing = options.NullableDouble("bearing"),
             Accuracy = options.NullableDouble("accuracy"),
+            Quality = options.NullableInt("quality"),
+            Satellites = options.NullableInt("satellites"),
         });
 
         var rate = Math.Max(10, options.Int("rate", 250));
@@ -211,7 +240,6 @@ internal static class Program
             identity,
             signer,
             rate,
-            Nmea.ParseSentences(options.Text("sentences")),
             bluetoothAdapter);
 
         var stop = new ManualResetEventSlim();
@@ -253,7 +281,7 @@ internal static class Program
         };
 
         var snapshot = target.Snapshot();
-        Log.Step($"accessory '{identity.Name}' over {transport.Describe}, " +
+        Log.Step($"accessory '{identity.Name}' ({identity.Model} / {identity.Serial}) over {transport.Describe}, " +
                  $"target {snapshot.Latitude:F6},{snapshot.Longitude:F6} every {rate} ms");
 
         link.Start();
@@ -377,15 +405,19 @@ internal static class Program
               iap2loc run --transport tcp --host 127.0.0.1 --port 12345 [--identity 目录] [选项]
               iap2loc devices
               iap2loc inspect-identity [--identity 目录]
-              iap2loc serve [--port 8737] [--identity 目录]   启动本地控制页面
+              iap2loc serve [--port 8737] [--identity 目录] [--config 文件]   启动本地控制页面
 
             运行选项:
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
               --alt --speed --bearing --accuracy    NMEA 附加字段
-              --sentences gga,rmc,gsa,gsv          NMEA 句子集合（默认 gga,rmc）
+              --quality            GGA 定位质量 0-8（默认 1）
+              --satellites         GGA 卫星数 0-99（默认 8）
               --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
-              --name --model --manufacturer --serial --firmware --hardware   配件身份
+              --config             配置文件（默认 iap2loc.json，位于程序目录）
+              --fixed-identity     不轮换配件身份（默认每次启动换一个 serial）
+              --fixed-adapter      不随机蓝牙地址，上报本机适配器地址
+              --name --model --manufacturer --serial --firmware --hardware   覆盖本次运行的身份字段
               --probe              只跑到识别为止（收到 0x1D02/0x1D03 即退出）
               --duration           多少秒后自动退出，便于脚本测试
               -v, --verbose        打印协议级细节

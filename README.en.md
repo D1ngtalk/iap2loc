@@ -71,7 +71,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## Usage
 
-The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, identity directory, transport and randomization all live under **Advanced**. When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
+The GUI walkthrough is in [Quick start](#quick-start). Update interval, fix quality, satellite count, MFi key, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
 
 ```bash
 iap2loc serve --port 8737
@@ -98,14 +98,29 @@ Common options:
 |---|---|
 | `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
-| `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
+| `--quality` | GGA fix quality 0–8, default 1 (GPS fix) |
+| `--satellites` | GGA satellites used, 0–99, default 8 |
 | `--rate` | Update interval in ms, default 250, minimum 10 |
-| `--identity` | Identity directory; without it the link and identification still work, but authentication will not |
-| `--name` / `--model` / `--serial` … | Accessory identity fields |
+| `--identity` | MFi key directory (`identity.pk8` + `certificate.p7b`); without it the link and identification still work, but authentication will not |
+| `--config` | Config file, default `iap2loc.json` next to the executable |
+| `--fixed-identity` | Do not rotate the accessory identity (a new serial is generated on every start by default) |
+| `--fixed-adapter` | Report the real adapter address (a random one is generated once and then kept by default) |
+| `--name` / `--model` / `--serial` … | Override identity fields for this run |
 | `--probe` | Exit on `0x1D02` / `0x1D03` |
 | `-v` | Protocol-level logging |
 
-## Identity
+Only GGA + RMC are sent (that is all iOS subscribes to in `0xFFFA`); `--sentences` is gone.
+
+## Config and favorites
+
+`iap2loc.json` next to the executable holds the accessory identity, the randomization switches and the saved points:
+
+- A new `serial` and `name` on every start, so iOS sees a new accessory. iOS remembers the last location per accessory, which otherwise blocks long-distance changes.
+- The Bluetooth address is generated on first start and then kept, so the pairing stays the same.
+- Favorites live in the same file.
+- `--config` points elsewhere; `--fixed-identity` / `--fixed-adapter` turn the randomization off for a run; deleting the file restores the default identity.
+
+## MFi key
 
 ```bash
 iap2loc inspect-identity --identity ./identity   # inspect the certificate chain and extensions
@@ -125,6 +140,7 @@ identity/
 ## Notes
 
 - **Read the log first**: `--probe` tells you whether identification is accepted without touching authentication; `-v` prints the full protocol exchange.
+- **Long jumps**: the frame that moves more than 100 m reports 250 m/s (about 900 km/h) and the bearing towards the target, then falls back to stationary, so the receiver never sees "stationary + teleport".
 - **Legal**: use this only on devices you own, for protocol research and privacy testing. Using a spoofed location for attendance, ride-hailing, insurance mileage or games may constitute fraud or breach of contract; an MFi identity of unknown origin may violate Apple's terms. No authentication material is provided here, and you are responsible for the legitimacy of whatever identity you supply.
 
 ## License
