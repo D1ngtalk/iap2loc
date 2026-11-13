@@ -403,8 +403,8 @@ internal sealed class WebServer : IDisposable
     {
         public string? Mode { get; set; }
         public List<RoutePointPayload>? Route { get; set; }
-        public double? WalkSpeedKmh { get; set; }
-        public bool? WalkLoop { get; set; }
+        public double? PathSpeedKmh { get; set; }
+        public bool? PathLoop { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
@@ -426,8 +426,8 @@ internal sealed class WebServer : IDisposable
         {
             Mode = ParseMode(Mode),
             Route = ParseRoute(Route),
-            WalkSpeedMps = WalkSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.1, 180) / 3.6 : null,
-            WalkLoop = WalkLoop,
+            PathSpeedMps = PathSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.1, 180) / 3.6 : null,
+            PathLoop = PathLoop,
             Latitude = Latitude,
             Longitude = Longitude,
             Altitude = Altitude,
@@ -447,7 +447,7 @@ internal sealed class WebServer : IDisposable
 
         private static TargetMode? ParseMode(string? text) => text?.Trim().ToLowerInvariant() switch
         {
-            "walk" or "route" => TargetMode.Walk,
+            "path" or "route" => TargetMode.Path,
             "point" or "single" => TargetMode.Point,
             _ => null,
         };

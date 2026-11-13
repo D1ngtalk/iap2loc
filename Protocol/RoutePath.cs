@@ -10,7 +10,7 @@ internal readonly record struct RouteSample(
     double DistanceMeters);
 
 /// <summary>
-/// A polyline walked either at a constant ground speed or along the timestamps of an imported GPX.
+/// A polyline followed either at a constant ground speed or along the timestamps of an imported GPX.
 /// Positions are a pure function of time, so several sessions sharing one target stay in sync no
 /// matter when each of them asks for the next fix.
 /// </summary>
@@ -47,7 +47,7 @@ internal sealed class RoutePath
 
     public double DurationSeconds => _duration;
 
-    /// <summary>True when the polyline can actually be walked; a single point cannot.</summary>
+    /// <summary>True when the polyline can actually be followed; a single point cannot.</summary>
     public bool IsUsable => _points.Length >= 2 && _length > 0.5;
 
     /// <summary>Cheap identity used to tell "the same path again" from "a new path".</summary>

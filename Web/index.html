@@ -144,7 +144,7 @@
           <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
         </div>
         
-        <div class="panel" data-panel="walk" style="display:none">
+        <div class="panel" data-panel="path" style="display:none">
           <p class="hint">在地图上依次点击添加路径点；拖动序号可调整，右键删除单点。</p>
           <div class="row wrap">
             <span class="chip" id="routeInfo">未添加</span>
@@ -153,9 +153,9 @@
             <button id="routeClear" class="mini danger">清空</button>
             <label class="filebtn">导入 GPX<input id="gpxFile" type="file" accept=".gpx,application/gpx+xml" hidden /></label>
           </div>
-          <div class="row"><label>速度 km/h</label><input id="walkSpeed" type="number" min="0.5" step="0.5" value="5" /></div>
-          <div class="row"><label>循环</label><input id="walkLoop" type="checkbox" checked /><span class="hint" style="margin:0">到终点后从头再来</span></div>
-          <div class="readout" id="walkProgress" style="display:none"><span>已走</span><span id="walkProgressText">—</span></div>
+          <div class="row"><label>速度 km/h</label><input id="pathSpeed" type="number" min="0.5" step="0.5" value="5" /></div>
+          <div class="row"><label>循环</label><input id="pathLoop" type="checkbox" checked /><span class="hint" style="margin:0">到终点后从头再来</span></div>
+          <div class="readout" id="pathProgress" style="display:none"><span>已走</span><span id="pathProgressText">—</span></div>
         </div>
         <div class="row"><label>随机偏移</label>
           <input id="jitterMeters" class="compact" type="number" min="0" step="1" value="0" />
@@ -279,7 +279,7 @@ const el = id => document.getElementById(id);
 // Adding a mode = adding an entry here plus a [data-panel] block and a branch in the payload.
 const MODES = [
   { id: 'point', label: '单点' },
-  { id: 'walk', label: '行走' }
+  { id: 'path', label: '路径' }
 ];
 
 const S = {
@@ -289,8 +289,8 @@ const S = {
             jitterAccuracy: false, accuracyMin: 3, accuracyMax: 12,
             jitterAltitude: false, altitudeMin: 5, altitudeMax: 20 },
   route: [],
-  walkSpeed: 5,
-  walkLoop: true,
+  pathSpeed: 5,
+  pathLoop: true,
   rate: 250, identity: '', transport: 'bt', host: '127.0.0.1', port: 8738,
   datum: 'wgs', sessions: [], devices: [], favorites: [], editing: false
 };
@@ -324,7 +324,7 @@ function initMap() {
 
 function addOnMap(lat, lon) {
   const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
-  if (S.mode === 'walk') {
+  if (S.mode === 'path') {
     S.route.forEach(point => { point.time = null; });
     S.route.push({ lat: +wLat.toFixed(6), lon: +wLon.toFixed(6), alt: null, time: null });
     renderRoute();
@@ -412,7 +412,7 @@ function renderRoute() {
   if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
   if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
 
-  if (S.mode !== 'walk' || S.route.length === 0) { renderRouteInfo(); return; }
+  if (S.mode !== 'path' || S.route.length === 0) { renderRouteInfo(); return; }
 
   const points = S.route.map(toLatLng);
   if (points.length >= 2) {
@@ -444,12 +444,12 @@ function renderRoute() {
 function renderRouteInfo() {
   if (S.route.length === 0) {
     el('routeInfo').textContent = '未添加';
-    el('walkSpeed').disabled = false;
+    el('pathSpeed').disabled = false;
     return;
   }
 
   const duration = routeDuration();
-  el('walkSpeed').disabled = duration > 0;
+  el('pathSpeed').disabled = duration > 0;
   el('routeInfo').textContent = S.route.length + ' 个点 · ' + (routeLength() / 1000).toFixed(2) + ' km' +
     (duration > 0 ? ' · ' + formatDuration(duration) : '');
 }
@@ -516,7 +516,7 @@ el('gpxFile').addEventListener('change', async event => {
   }
 
   S.route = downsample(points, 5000);
-  if (S.mode !== 'walk') S.mode = 'walk';
+  if (S.mode !== 'path') S.mode = 'path';
   renderModes();
   fitRoute();
   markDirty();
@@ -601,8 +601,8 @@ function readInputs() {
   S.target.satellites = Number.isFinite(satellites) ? Math.max(0, Math.min(99, satellites)) : 8;
   S.target.altitudeMin = num('altitudeMin', 5);
   S.target.altitudeMax = num('altitudeMax', 20);
-  S.walkSpeed = num('walkSpeed', 5);
-  S.walkLoop = el('walkLoop').checked;
+  S.pathSpeed = num('pathSpeed', 5);
+  S.pathLoop = el('pathLoop').checked;
   S.rate = num('rate', 250);
   S.identity = el('identity').value.trim();
   S.transport = el('transport').value;
@@ -640,7 +640,7 @@ function markClean() {
 }
 
 function buildPayload(tolerateEmptyRoute) {
-  const mode = S.mode === 'walk' && tolerateEmptyRoute && S.route.length < 2 ? 'point' : S.mode;
+  const mode = S.mode === 'path' && tolerateEmptyRoute && S.route.length < 2 ? 'point' : S.mode;
   return {
     mode,
     latitude: S.target.lat, longitude: S.target.lon,
@@ -650,8 +650,8 @@ function buildPayload(tolerateEmptyRoute) {
     quality: S.target.quality, satellites: S.target.satellites,
     jitterAltitude: S.target.jitterAltitude, altitudeMin: S.target.altitudeMin, altitudeMax: S.target.altitudeMax,
     rate: S.rate,
-    walkSpeedKmh: S.walkSpeed, walkLoop: S.walkLoop,
-    route: mode === 'walk'
+    pathSpeedKmh: S.pathSpeed, pathLoop: S.pathLoop,
+    route: mode === 'path'
       ? S.route.map(point => ({ latitude: point.lat, longitude: point.lon, altitude: point.alt, time: point.time }))
       : null
   };
@@ -661,8 +661,8 @@ async function applyTarget(options = {}) {
   readInputs();
   renderTarget(false);
 
-  if (S.mode === 'walk' && S.route.length < 2 && !options.tolerateEmptyRoute) {
-    notify('行走模式至少需要两个路径点，或导入一条 GPX', 'error');
+  if (S.mode === 'path' && S.route.length < 2 && !options.tolerateEmptyRoute) {
+    notify('路径模式至少需要两个路径点，或导入一条 GPX', 'error');
     return false;
   }
 
@@ -683,7 +683,7 @@ function updateResolved(target) {
   if (!active) return;
 
   const parts = [];
-  if (target.mode !== 'walk') {
+  if (target.mode !== 'path') {
     parts.push(target.resolvedLatitude.toFixed(6) + ', ' + target.resolvedLongitude.toFixed(6));
   }
   if (target.resolvedAltitude != null) parts.push(target.resolvedAltitude.toFixed(1) + ' m 高');
@@ -698,24 +698,24 @@ function renderApplied(target) {
   if (target.altitude != null) extra.push('高度 ' + target.altitude.toFixed(1) + 'm');
   const suffix = extra.length ? ' · ' + extra.join(' · ') : '';
 
-  if (target.mode === 'walk' && target.routePoints >= 2) {
-    el('appliedText').textContent = '行走 · ' + target.routePoints + ' 点 / ' +
-      (target.routeLengthMeters / 1000).toFixed(2) + ' km · 已走 ' + Math.round(target.walkTravelledMeters) + ' m' + suffix;
-    el('walkProgress').style.display = 'flex';
-    el('walkProgressText').textContent = Math.round(target.walkTravelledMeters) + ' / ' +
+  if (target.mode === 'path' && target.routePoints >= 2) {
+    el('appliedText').textContent = '路径 · ' + target.routePoints + ' 点 / ' +
+      (target.routeLengthMeters / 1000).toFixed(2) + ' km · 已走 ' + Math.round(target.pathTravelledMeters) + ' m' + suffix;
+    el('pathProgress').style.display = 'flex';
+    el('pathProgressText').textContent = Math.round(target.pathTravelledMeters) + ' / ' +
       Math.round(target.routeLengthMeters) + ' m';
   } else {
     el('appliedText').textContent = '单点 · ' + target.latitude.toFixed(6) + ', ' +
       target.longitude.toFixed(6) + suffix;
-    el('walkProgress').style.display = 'none';
+    el('pathProgress').style.display = 'none';
   }
 }
 
-['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','altitudeMin','altitudeMax','walkSpeed','rate','satellites'].forEach(id => {
+['lat','lon','accuracy','alt','accuracyMin','accuracyMax','jitterMeters','altitudeMin','altitudeMax','pathSpeed','rate','satellites'].forEach(id => {
   el(id).addEventListener('input', onEdited);
 });
 el('quality').addEventListener('change', onEdited);
-['jitterAccuracy','jitterAltitude','walkLoop'].forEach(id => {
+['jitterAccuracy','jitterAltitude','pathLoop'].forEach(id => {
   el(id).addEventListener('change', onEdited);
 });
 
