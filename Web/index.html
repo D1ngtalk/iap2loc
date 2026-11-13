@@ -42,7 +42,7 @@
     main { flex-direction: column; }
     #map { flex: none; height: 42vh; min-height: 220px; }
     aside { width: auto; flex: 1; border-left: 0; border-top: 1px solid var(--line); }
-    #log { height: 140px; }
+    #log { height: 180px; }
   }
   .scroll { overflow: auto; padding: 12px 14px; flex: 1; }
   section { margin-bottom: 16px; }
@@ -80,8 +80,8 @@
   details { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: #fcfcfa; }
   details summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 500; }
   details[open] summary { margin-bottom: 8px; }
-  #log { flex: none; height: 190px; border-top: 1px solid var(--line); background: #1f1f1d; color: #d8d6cf;
-    overflow: auto; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; padding: 7px 9px; }
+  #log { height: 220px; margin: 4px 0 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+    background: #1f1f1d; color: #d8d6cf; overflow: auto; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
   #log div { white-space: pre-wrap; word-break: break-all; }
   #log .t { color: #7d7a72; } #log .ok { color: #7fd1a8; } #log .error { color: #f0a3a3; }
   #log .warn { color: #e8c27a; } #log .step { color: #9cc4ea; }
@@ -226,12 +226,12 @@
           </div>
           <div class="row" id="rowHost" style="display:none"><label>TCP 地址</label><input id="host" value="127.0.0.1" /></div>
           <div class="row" id="rowPort" style="display:none"><label>TCP 端口</label><input id="port" type="number" value="8738" /></div>
-          <div class="row"><label style="width:auto">控制台日志</label><input id="showLog" type="checkbox" /><span class="hint" style="margin:0">在下方显示实时输出</span></div>
+          <div class="row"><label style="width:auto">控制台日志</label><input id="showLog" type="checkbox" /><span class="hint" style="margin:0">在面板底部显示实时输出</span></div>
           <p class="hint">周期、定位质量与卫星数实时生效；MFi 密钥对之后新加的设备生效。</p>
         </details>
       </section>
+      <div id="log"></div>
     </div>
-    <div id="log"></div>
   </aside>
 </main>
 
@@ -749,7 +749,7 @@ el('transport').addEventListener('change', () => {
 const logBuffer = [];
 let logVisible = false;
 
-function setLogVisible(on) {
+function setLogVisible(on, reveal) {
   logVisible = on;
   el('showLog').checked = on;
   document.body.classList.toggle('log-hidden', !on);
@@ -758,8 +758,11 @@ function setLogVisible(on) {
     el('log').innerHTML = '';
     logBuffer.slice(-300).forEach(appendLogDom);
     el('log').scrollTop = el('log').scrollHeight;
+    if (reveal) el('log').scrollIntoView({ block: 'nearest' });
   }
 }
+
+el('showLog').addEventListener('change', () => setLogVisible(el('showLog').checked, true));
 
 function appendLog(entry) {
   logBuffer.push(entry);
