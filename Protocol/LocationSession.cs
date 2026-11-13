@@ -150,6 +150,7 @@ internal sealed class LocationSession : IDisposable
                     _lastSent.Clear();
                     _subscribed = true;
                     Log.Ok($"rx 0xFFFA StartLocationInformation, {Describe(_subscription)}");
+                    Log.Info($"0xFFFA raw parameters: {DescribeRaw(parameters)}");
                     StartTimer();
                     RestartTimer();
                     break;
@@ -398,6 +399,29 @@ internal sealed class LocationSession : IDisposable
 
     private static string Describe(IReadOnlyDictionary<int, byte[]> parameters) =>
         string.Join(", ", parameters.Select(pair => $"{pair.Key}:{pair.Value.Length}B"));
+
+    /// <summary>
+    /// Every parameter the phone actually sent, including ids the subscription parser does not know.
+    /// Periods are decoded because "0x8001=250ms" is easier to read than four hex bytes.
+    /// </summary>
+    private static string DescribeRaw(IReadOnlyDictionary<int, byte[]> parameters) =>
+        parameters.Count == 0
+            ? "none"
+            : string.Join(", ", parameters
+                .OrderBy(pair => pair.Key)
+                .Select(pair =>
+                {
+                    if (pair.Key is 0x8001 or 0x8002 && pair.Value.Length == 4)
+                    {
+                        var milliseconds = (pair.Value[0] << 24) | (pair.Value[1] << 16) |
+                                           (pair.Value[2] << 8) | pair.Value[3];
+                        return $"0x{pair.Key:X4}={milliseconds}ms";
+                    }
+
+                    return pair.Value.Length == 0
+                        ? $"0x{pair.Key:X4}(empty)"
+                        : $"0x{pair.Key:X4}({pair.Value.Length}B)";
+                }));
 
     /// <summary>
     /// 0xFFFA carries the sentence ids it wants as empty parameters 1 (GGA) and 2 (RMC);
