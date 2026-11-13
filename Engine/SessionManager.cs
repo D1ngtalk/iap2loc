@@ -21,7 +21,7 @@ internal sealed class SessionManager : IDisposable
     /// <summary>Identity handed to new sessions. Existing sessions keep the one they started with.</summary>
     public AccessoryProfile Profile => _config.EffectiveProfile;
 
-    public AccessoryProfile RotateIdentity() => _config.RotateIdentity();
+    public AccessoryProfile RotateIdentity(byte[]? localAdapter) => _config.RotateIdentity(localAdapter);
 
     public RunSession Add(RunRequest request)
     {

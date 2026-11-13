@@ -42,7 +42,7 @@ internal sealed class AppConfig
 
     [JsonIgnore]
     public AccessoryProfile EffectiveProfile =>
-        UseAdapterOverride ? Accessory : Accessory with { AdapterAddress = null };
+        RandomizeAdapter && UseAdapterOverride ? Accessory : Accessory with { AdapterAddress = null };
 
     [JsonIgnore]
     public string FilePath { get; private set; } = DefaultPath;
@@ -102,11 +102,18 @@ internal sealed class AppConfig
         }
     }
 
-    public AccessoryProfile RotateIdentity()
+    /// <summary>Rotates the identity and the reported adapter address together, then persists both.</summary>
+    public AccessoryProfile RotateIdentity(byte[]? localAdapter)
     {
         lock (_gate)
         {
-            Accessory = Accessory.Rotate();
+            var next = Accessory.Rotate();
+            if (RandomizeAdapter && UseAdapterOverride)
+            {
+                next = next with { AdapterAddress = AccessoryProfile.RandomAdapterAddress(localAdapter) };
+            }
+
+            Accessory = next;
             SaveLocked();
             return EffectiveProfile;
         }

@@ -133,10 +133,10 @@
               <option value="gga,rmc,gsa,gsv">GGA + RMC + GSA + GSV</option>
             </select>
           </div>
-          <div class="row"><label>身份目录</label><input id="identity" placeholder="留空 = 用内置身份" /></div>
+          <div class="row"><label>MFi密钥</label><input id="identity" placeholder="留空 = 用内置密钥" /></div>
           <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
-          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">立即更换身份</button></div>
-          <p class="hint">启动时已自动换过一次；按钮对之后新添加的设备生效。配置与收藏保存在程序目录的 iap2loc.json。</p>
+          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换身份与蓝牙地址</button></div>
+          <p class="hint">启动时已自动换过一次；按钮会同时更换身份和蓝牙地址，对之后新添加的设备生效。</p>
           <div class="row"><label>传输</label>
             <select id="transport">
               <option value="bt">蓝牙 RFCOMM</option>
@@ -147,7 +147,7 @@
           <div class="row" id="rowPort" style="display:none"><label>TCP 端口</label><input id="port" type="number" value="8738" /></div>
           <div class="row"><label>精度范围</label><input id="accuracyMin" type="number" step="0.1" value="3" /><input id="accuracyMax" type="number" step="0.1" value="12" /></div>
           <div class="row"><label>偏移半径</label><input id="jitterMeters" type="number" step="1" value="10" /></div>
-          <p class="hint">周期实时生效；句子集与身份目录对之后新加的设备生效。</p>
+          <p class="hint">周期实时生效；句子集与 MFi 密钥对之后新加的设备生效。</p>
         </details>
       </section>
     </div>
@@ -417,7 +417,8 @@ el('rotateIdentity').addEventListener('click', async () => {
     return;
   }
   renderIdentity(result.identity);
-  appendLog({ time: '', level: 'ok', text: '配件身份已更换：' + result.identity.serial + '，新添加的设备生效' });
+  appendLog({ time: '', level: 'ok', text: '配件身份已更换：' + result.identity.serial +
+    (result.identity.adapter ? ' · ' + result.identity.adapter : '') + '，新添加的设备生效' });
   pollState();
 });
 

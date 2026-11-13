@@ -221,7 +221,7 @@ internal sealed class WebServer : IDisposable
 
     private object RotateIdentity()
     {
-        var profile = _manager.RotateIdentity();
+        var profile = _manager.RotateIdentity(BluetoothDevices.TryGetLocalAdapterAddress());
         return new
         {
             ok = true,

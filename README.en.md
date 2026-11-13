@@ -71,7 +71,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## Usage
 
-The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, identity directory, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
+The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, MFi key, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
 
 ```bash
 iap2loc serve --port 8737
@@ -100,7 +100,7 @@ Common options:
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
 | `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
 | `--rate` | Update interval in ms, default 250, minimum 10 |
-| `--identity` | Identity directory; without it the link and identification still work, but authentication will not |
+| `--identity` | MFi key directory (`identity.pk8` + `certificate.p7b`); without it the link and identification still work, but authentication will not |
 | `--config` | Config file, default `iap2loc.json` next to the executable |
 | `--fixed-identity` | Do not rotate the accessory identity (a new serial is generated on every start by default) |
 | `--fixed-adapter` | Report the real adapter address (a random one is generated once and then kept by default) |
@@ -117,7 +117,7 @@ Common options:
 - Favorites live in the same file.
 - `--config` points elsewhere; `--fixed-identity` / `--fixed-adapter` turn the randomization off for a run; deleting the file restores the default identity.
 
-## Identity
+## MFi key
 
 ```bash
 iap2loc inspect-identity --identity ./identity   # inspect the certificate chain and extensions

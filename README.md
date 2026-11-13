@@ -70,7 +70,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## 使用
 
-图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、身份目录、传输方式、随机偏移都在「高级设置」里；配件身份每次启动自动更换，也可在那里立即换一次。
+图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、MFi 密钥、传输方式、随机偏移都在「高级设置」里；配件身份每次启动自动更换，也可在那里立即换一次。
 如果 iPhone 在订阅定位时指定了上报间隔（`0xFFFA` 里的 `0x8001` / `0x8002`），以设备指定的为准，`--rate` 只作为设备没提要求时的默认值。可以只启动控制台：
 
 ```bash
@@ -100,7 +100,7 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
 | `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
 | `--rate` | 上报周期（毫秒），默认 250，最小 10 |
-| `--identity` | 身份目录；缺省时链路与识别可用，认证不会通过 |
+| `--identity` | MFi 密钥目录（`identity.pk8` + `certificate.p7b`）；缺省时链路与识别可用，认证不会通过 |
 | `--config` | 配置文件，默认程序目录下的 `iap2loc.json` |
 | `--fixed-identity` | 不轮换配件身份（默认每次启动换一个 serial） |
 | `--fixed-adapter` | 上报本机蓝牙地址（默认首次启动生成一个随机值并固定） |
@@ -117,7 +117,7 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 - 收藏点写在同一个文件里。
 - `--config` 可以指向别的文件；`--fixed-identity` / `--fixed-adapter` 临时关掉随机；删掉文件即回到默认身份。
 
-## 身份
+## MFi 密钥
 
 ```bash
 iap2loc inspect-identity --identity ./identity   # 查看证书链与扩展
