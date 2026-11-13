@@ -79,7 +79,10 @@ internal static class Program
     private static int RunWeb(Options options, bool openBrowser = false)
     {
         var port = options.Int("port", 8737);
-        var manager = new SessionManager(options.Double("lat", 31.2304), options.Double("lon", 121.4737));
+        var manager = new SessionManager(
+            options.Double("lat", 31.2304),
+            options.Double("lon", 121.4737),
+            options.Text("profile"));
         var favorites = new FavoriteStore();
 
         // Let a custom build warm up its identity source before any session starts.
@@ -165,30 +168,60 @@ internal static class Program
                      "The phone ignores location data from an unauthenticated accessory.");
         }
 
+        var profilePath = options.Text("profile") ?? AccessoryProfile.DefaultPath;
+        var profile = AccessoryProfile.Load(profilePath);
+        var localAdapter = BluetoothDevices.TryGetLocalAdapterAddress();
+
+        if (options.Flag("new-identity"))
+        {
+            profile = profile.Rotate();
+        }
+
+        if (options.Flag("random-adapter"))
+        {
+            profile = profile with { AdapterAddress = AccessoryProfile.RandomAdapterAddress(localAdapter) };
+        }
+
+        if (options.Flag("new-identity"))
+        {
+            profile.Save(profilePath);
+            Log.Ok($"配件身份已更换：serial {profile.Serial} → {profilePath}");
+        }
+
+        profile = profile with
+        {
+            Name = options.Text("name", profile.Name),
+            Model = options.Text("model", profile.Model),
+            Manufacturer = options.Text("manufacturer", profile.Manufacturer),
+            Serial = options.Text("serial", profile.Serial),
+            Firmware = options.Text("firmware", profile.Firmware),
+            Hardware = options.Text("hardware", profile.Hardware),
+        };
+
+        var identity = profile.ToIdentity();
+
         using var transport = OpenTransport(transportName, options);
 
         byte[]? bluetoothAdapter = null;
         if (transportName is "bt" or "bluetooth")
         {
-            bluetoothAdapter = BluetoothDevices.TryGetLocalAdapterAddress();
+            var reported = profile.AdapterOverride();
+            bluetoothAdapter = reported ?? localAdapter;
             if (bluetoothAdapter is null)
             {
                 Log.Warn("could not read the local Bluetooth adapter address; iOS rejects identification " +
                          "without transport component 17");
+            }
+            else if (reported is not null)
+            {
+                Log.Warn($"上报的蓝牙地址已改写为 {string.Join(':', reported.Select(b => b.ToString("X2")))}" +
+                         "（实验项；识别被拒时去掉 --random-adapter）");
             }
             else
             {
                 Log.Info($"local Bluetooth adapter {string.Join(':', bluetoothAdapter.Select(b => b.ToString("X2")))}");
             }
         }
-
-        var identity = new AccessoryIdentity(
-            options.Text("name", "iAP2 Loc"),
-            options.Text("model", "Loc1,1"),
-            options.Text("manufacturer", "carplay-loc"),
-            options.Text("serial", "LOC000000001"),
-            options.Text("firmware", "0.1.0"),
-            options.Text("hardware", "1.0"));
 
         var target = new LocationTarget(
             options.Double("lat", 31.2304),
@@ -253,7 +286,7 @@ internal static class Program
         };
 
         var snapshot = target.Snapshot();
-        Log.Step($"accessory '{identity.Name}' over {transport.Describe}, " +
+        Log.Step($"accessory '{identity.Name}' ({identity.Model} / {identity.Serial}) over {transport.Describe}, " +
                  $"target {snapshot.Latitude:F6},{snapshot.Longitude:F6} every {rate} ms");
 
         link.Start();
@@ -377,7 +410,7 @@ internal static class Program
               iap2loc run --transport tcp --host 127.0.0.1 --port 12345 [--identity 目录] [选项]
               iap2loc devices
               iap2loc inspect-identity [--identity 目录]
-              iap2loc serve [--port 8737] [--identity 目录]   启动本地控制页面
+              iap2loc serve [--port 8737] [--identity 目录] [--profile 文件]   启动本地控制页面
 
             运行选项:
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
@@ -385,7 +418,10 @@ internal static class Program
               --sentences gga,rmc,gsa,gsv          NMEA 句子集合（默认 gga,rmc）
               --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
-              --name --model --manufacturer --serial --firmware --hardware   配件身份
+              --profile            配件身份文件（默认 %LOCALAPPDATA%/iap2loc/accessory.json）
+              --new-identity       生成并保存一个新的配件身份（serial、name）
+              --random-adapter     上报随机蓝牙地址（实验项，可能被识别拒绝）
+              --name --model --manufacturer --serial --firmware --hardware   覆盖本次运行的身份字段
               --probe              只跑到识别为止（收到 0x1D02/0x1D03 即退出）
               --duration           多少秒后自动退出，便于脚本测试
               -v, --verbose        打印协议级细节

@@ -70,7 +70,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## 使用
 
-图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、身份目录、传输方式、随机偏移都在「高级设置」里。
+图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、身份目录、传输方式、随机偏移都在「高级设置」里；「更换配件身份」也在那里，对之后新加的设备生效。
 如果 iPhone 在订阅定位时指定了上报间隔（`0xFFFA` 里的 `0x8001` / `0x8002`），以设备指定的为准，`--rate` 只作为设备没提要求时的默认值。可以只启动控制台：
 
 ```bash
@@ -101,7 +101,10 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
 | `--rate` | 上报周期（毫秒），默认 250，最小 10 |
 | `--identity` | 身份目录；缺省时链路与识别可用，认证不会通过 |
-| `--name` / `--model` / `--serial` … | 配件身份展示字段 |
+| `--profile` | 配件身份文件，默认 `%LOCALAPPDATA%\iap2loc\accessory.json` |
+| `--new-identity` | 生成并保存一个新的配件身份（serial、name） |
+| `--random-adapter` | 上报随机蓝牙地址（实验项，可能被识别拒绝） |
+| `--name` / `--model` / `--serial` … | 覆盖本次运行的身份字段 |
 | `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |
 | `-v` | 打印协议级日志 |
 

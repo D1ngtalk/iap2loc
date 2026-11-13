@@ -12,8 +12,7 @@ internal sealed record RunRequest
     public string? IdentityDirectory { get; init; }
     public int Rate { get; init; } = 250;
     public string? Sentences { get; init; }
-    public string Name { get; init; } = "iAP2 Loc";
-    public string Serial { get; init; } = "LOC000000001";
+    public AccessoryProfile Profile { get; init; } = AccessoryProfile.Default;
     public string Label { get; init; } = "iPhone";
 }
 
@@ -108,17 +107,18 @@ internal sealed class RunSession : IDisposable
                     var other => throw new ArgumentException($"未知传输 '{other}'"),
                 };
 
-                var adapter = _request.Transport.StartsWith("bt", StringComparison.OrdinalIgnoreCase)
+                var localAdapter = _request.Transport.StartsWith("bt", StringComparison.OrdinalIgnoreCase)
                     ? BluetoothDevices.TryGetLocalAdapterAddress()
                     : null;
+                var reportedAdapter = _request.Profile.AdapterOverride();
+                var adapter = reportedAdapter ?? localAdapter;
+                var identity = _request.Profile.ToIdentity();
 
-                var identity = new AccessoryIdentity(
-                    _request.Name,
-                    "Loc1,1",
-                    "carplay-loc",
-                    _request.Serial,
-                    "0.1.0",
-                    "1.0");
+                if (reportedAdapter is not null)
+                {
+                    Log.Warn($"[{Label}] 蓝牙地址已改写为 " +
+                             $"{string.Join(':', reportedAdapter.Select(b => b.ToString("X2")))}（实验项）");
+                }
 
                 _link = new Iap2Link(_transport, initiate: true, $"accessory-{Id}");
                 _location = new LocationSession(
@@ -143,7 +143,7 @@ internal sealed class RunSession : IDisposable
 
                 _link.Start();
                 _running = true;
-                Log.Ok($"[{Label}] 已启动：{_transport.Describe}");
+                Log.Ok($"[{Label}] 已启动：{_transport.Describe}，配件身份 {identity.Serial}");
             }
             catch (Exception ex)
             {

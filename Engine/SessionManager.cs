@@ -1,4 +1,5 @@
 using Iap2Loc.Protocol;
+using Iap2Loc.Transport;
 
 namespace Iap2Loc.Engine;
 
@@ -7,21 +8,46 @@ internal sealed class SessionManager : IDisposable
 {
     private readonly object _gate = new();
     private readonly List<RunSession> _sessions = new();
+    private readonly string _profilePath;
     private int _nextId;
 
-    public SessionManager(double latitude, double longitude)
+    public SessionManager(double latitude, double longitude, string? profilePath = null)
     {
         Target = new LocationTarget(latitude, longitude);
+        _profilePath = string.IsNullOrWhiteSpace(profilePath) ? AccessoryProfile.DefaultPath : profilePath;
+        Profile = AccessoryProfile.Load(_profilePath);
     }
 
     public LocationTarget Target { get; }
+
+    /// <summary>Identity handed to new sessions. Existing sessions keep the one they started with.</summary>
+    public AccessoryProfile Profile { get; private set; }
+
+    public AccessoryProfile RotateIdentity(bool randomizeAdapter)
+    {
+        lock (_gate)
+        {
+            var next = Profile.Rotate();
+            if (randomizeAdapter)
+            {
+                next = next with
+                {
+                    AdapterAddress = AccessoryProfile.RandomAdapterAddress(BluetoothDevices.TryGetLocalAdapterAddress()),
+                };
+            }
+
+            next.Save(_profilePath);
+            Profile = next;
+            return next;
+        }
+    }
 
     public RunSession Add(RunRequest request)
     {
         RunSession session;
         lock (_gate)
         {
-            session = new RunSession($"s{++_nextId}", request, Target);
+            session = new RunSession($"s{++_nextId}", request with { Profile = Profile }, Target);
             _sessions.Add(session);
         }
 
@@ -97,6 +123,14 @@ internal sealed class SessionManager : IDisposable
         return new
         {
             warning = IdentitySource.Warning,
+            identity = new
+            {
+                name = Profile.Name,
+                model = Profile.Model,
+                serial = Profile.Serial,
+                adapter = Profile.AdapterAddress,
+                path = _profilePath,
+            },
             target = Target.Snapshot(),
             sessions = sessions.Select(session => new
             {
