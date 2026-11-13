@@ -70,7 +70,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## 使用
 
-图形界面的完整流程见[快速开始](#快速开始)。周期、句子集、MFi 密钥、传输方式、随机偏移都在「高级设置」里；配件身份每次启动自动更换，也可在那里立即换一次。
+图形界面的完整流程见[快速开始](#快速开始)。周期、定位质量、卫星数、MFi 密钥、传输方式、随机偏移都在「高级设置」里；配件身份每次启动自动更换，也可在那里立即换一次。
 如果 iPhone 在订阅定位时指定了上报间隔（`0xFFFA` 里的 `0x8001` / `0x8002`），以设备指定的为准，`--rate` 只作为设备没提要求时的默认值。可以只启动控制台：
 
 ```bash
@@ -98,7 +98,8 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 |---|---|
 | `--lat` / `--lon` | 目标坐标，默认 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
-| `--sentences gga,rmc,gsa,gsv` | NMEA 句子集，默认 `gga,rmc` |
+| `--quality` | GGA 定位质量 0–8，默认 1（GPS 单点） |
+| `--satellites` | GGA 卫星数 0–99，默认 8 |
 | `--rate` | 上报周期（毫秒），默认 250，最小 10 |
 | `--identity` | MFi 密钥目录（`identity.pk8` + `certificate.p7b`）；缺省时链路与识别可用，认证不会通过 |
 | `--config` | 配置文件，默认程序目录下的 `iap2loc.json` |
@@ -107,6 +108,8 @@ iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识�
 | `--name` / `--model` / `--serial` … | 覆盖本次运行的身份字段 |
 | `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |
 | `-v` | 打印协议级日志 |
+
+只发送 GGA + RMC 两条句子（iOS 的 `0xFFFA` 也只订阅这两条），`--sentences` 已移除。
 
 ## 配置与收藏
 

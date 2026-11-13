@@ -25,7 +25,6 @@ internal sealed class LocationSession : IDisposable
     private double _lastFixLongitude;
     private bool _hasLastFix;
     private int _intervalMs;
-    private NmeaSentences _sentences;
     private int _pushed;
     private bool _disposed;
 
@@ -44,7 +43,6 @@ internal sealed class LocationSession : IDisposable
         AccessoryIdentity identity,
         MfiSigner? signer,
         int intervalMs,
-        NmeaSentences sentences,
         byte[]? bluetoothAdapter = null)
     {
         _link = link;
@@ -52,7 +50,6 @@ internal sealed class LocationSession : IDisposable
         _identity = identity;
         _signer = signer;
         _intervalMs = Math.Max(10, intervalMs);
-        _sentences = sentences;
         _bluetoothAdapter = bluetoothAdapter;
         _link.CsmReceived += OnCsm;
     }
@@ -225,8 +222,9 @@ internal sealed class LocationSession : IDisposable
                     bearing,
                     speed,
                     fix.AccuracyMeters,
-                    now,
-                    _sentences);
+                    fix.Quality,
+                    fix.Satellites,
+                    now);
 
                 var parameters = new List<byte[]>();
                 var sent = new List<int>();
@@ -235,7 +233,7 @@ internal sealed class LocationSession : IDisposable
                 foreach (var sentence in nmea.Split("\r\n", StringSplitOptions.RemoveEmptyEntries))
                 {
                     var id = SentenceId(sentence);
-                    if (id != 0 && subscription is { Sentences.Count: > 0 } && !subscription.Sentences.Contains(id))
+                    if (subscription is { Sentences.Count: > 0 } && !subscription.Sentences.Contains(id))
                     {
                         continue;
                     }

@@ -227,6 +227,8 @@ internal static class Program
             Speed = options.NullableDouble("speed"),
             Bearing = options.NullableDouble("bearing"),
             Accuracy = options.NullableDouble("accuracy"),
+            Quality = options.NullableInt("quality"),
+            Satellites = options.NullableInt("satellites"),
         });
 
         var rate = Math.Max(10, options.Int("rate", 250));
@@ -238,7 +240,6 @@ internal static class Program
             identity,
             signer,
             rate,
-            Nmea.ParseSentences(options.Text("sentences")),
             bluetoothAdapter);
 
         var stop = new ManualResetEventSlim();
@@ -409,7 +410,8 @@ internal static class Program
             运行选项:
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
               --alt --speed --bearing --accuracy    NMEA 附加字段
-              --sentences gga,rmc,gsa,gsv          NMEA 句子集合（默认 gga,rmc）
+              --quality            GGA 定位质量 0-8（默认 1）
+              --satellites         GGA 卫星数 0-99（默认 8）
               --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
               --config             配置文件（默认 iap2loc.json，位于程序目录）

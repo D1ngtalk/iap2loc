@@ -11,7 +11,6 @@ internal sealed record RunRequest
     public int Port { get; init; }
     public string? IdentityDirectory { get; init; }
     public int Rate { get; init; } = 250;
-    public string? Sentences { get; init; }
     public AccessoryProfile Profile { get; init; } = AccessoryProfile.Default;
     public string Label { get; init; } = "iPhone";
 }
@@ -127,7 +126,6 @@ internal sealed class RunSession : IDisposable
                     identity,
                     _signer,
                     _request.Rate,
-                    Nmea.ParseSentences(_request.Sentences),
                     bluetoothAdapter: adapter);
 
                 _link.Failed += reason =>

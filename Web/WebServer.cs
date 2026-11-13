@@ -211,7 +211,6 @@ internal sealed class WebServer : IDisposable
             Port = payload.Port ?? 0,
             IdentityDirectory = payload.Identity,
             Rate = payload.Rate ?? 250,
-            Sentences = payload.Sentences,
             Label = string.IsNullOrWhiteSpace(payload.Label) ? (payload.Mac ?? "iPhone") : payload.Label!,
         };
 
@@ -411,6 +410,8 @@ internal sealed class WebServer : IDisposable
         public bool? JitterAccuracy { get; set; }
         public double? AccuracyMin { get; set; }
         public double? AccuracyMax { get; set; }
+        public int? Quality { get; set; }
+        public int? Satellites { get; set; }
         public int? Rate { get; set; }
 
         public TargetUpdate ToUpdate() => new()
@@ -426,6 +427,8 @@ internal sealed class WebServer : IDisposable
             JitterAccuracy = JitterAccuracy,
             AccuracyMin = AccuracyMin,
             AccuracyMax = AccuracyMax,
+            Quality = Quality,
+            Satellites = Satellites,
         };
     }
 
@@ -437,7 +440,6 @@ internal sealed class WebServer : IDisposable
         public int? Port { get; set; }
         public string? Identity { get; set; }
         public int? Rate { get; set; }
-        public string? Sentences { get; set; }
         public string? Label { get; set; }
     }
 

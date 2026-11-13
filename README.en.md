@@ -71,7 +71,7 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 
 ## Usage
 
-The GUI walkthrough is in [Quick start](#quick-start). Update interval, NMEA sentence set, MFi key, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
+The GUI walkthrough is in [Quick start](#quick-start). Update interval, fix quality, satellite count, MFi key, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
 
 ```bash
 iap2loc serve --port 8737
@@ -98,7 +98,8 @@ Common options:
 |---|---|
 | `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
 | `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
-| `--sentences gga,rmc,gsa,gsv` | NMEA sentence set, default `gga,rmc` |
+| `--quality` | GGA fix quality 0–8, default 1 (GPS fix) |
+| `--satellites` | GGA satellites used, 0–99, default 8 |
 | `--rate` | Update interval in ms, default 250, minimum 10 |
 | `--identity` | MFi key directory (`identity.pk8` + `certificate.p7b`); without it the link and identification still work, but authentication will not |
 | `--config` | Config file, default `iap2loc.json` next to the executable |
@@ -107,6 +108,8 @@ Common options:
 | `--name` / `--model` / `--serial` … | Override identity fields for this run |
 | `--probe` | Exit on `0x1D02` / `0x1D03` |
 | `-v` | Protocol-level logging |
+
+Only GGA + RMC are sent (that is all iOS subscribes to in `0xFFFA`); `--sentences` is gone.
 
 ## Config and favorites
 
