@@ -137,7 +137,7 @@ internal sealed class WebServer : IDisposable
                         return;
 
                     case "/api/identity/rotate" when method == "POST":
-                        RespondJson(stream, RotateIdentity(body));
+                        RespondJson(stream, RotateIdentity());
                         return;
 
                     case "/api/favorites" when method == "POST":
@@ -219,10 +219,9 @@ internal sealed class WebServer : IDisposable
         return new { ok = session.Error is null, error = session.Error, id = session.Id };
     }
 
-    private object RotateIdentity(string body)
+    private object RotateIdentity()
     {
-        var payload = Deserialize<IdentityPayload>(body) ?? new IdentityPayload();
-        var profile = _manager.RotateIdentity(payload.RandomizeAdapter == true);
+        var profile = _manager.RotateIdentity();
         return new
         {
             ok = true,
@@ -445,11 +444,6 @@ internal sealed class WebServer : IDisposable
     private sealed class IdPayload
     {
         public string? Id { get; set; }
-    }
-
-    private sealed class IdentityPayload
-    {
-        public bool? RandomizeAdapter { get; set; }
     }
 
     private sealed class FavoritePayload

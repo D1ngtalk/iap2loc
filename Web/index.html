@@ -135,9 +135,8 @@
           </div>
           <div class="row"><label>身份目录</label><input id="identity" placeholder="留空 = 用内置身份" /></div>
           <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
-          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换配件身份</button></div>
-          <div class="row"><label style="width:auto">随机蓝牙地址</label><input id="randomAdapter" type="checkbox" /><span class="hint" style="margin:0">实验</span></div>
-          <p class="hint">换身份只对之后新添加的设备生效，已连接的设备保持原身份。</p>
+          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">立即更换身份</button></div>
+          <p class="hint">启动时已自动换过一次；按钮对之后新添加的设备生效。配置与收藏保存在程序目录的 iap2loc.json。</p>
           <div class="row"><label>传输</label>
             <select id="transport">
               <option value="bt">蓝牙 RFCOMM</option>
@@ -412,7 +411,7 @@ async function removeSession(id) {
 el('stopAll').addEventListener('click', async () => { await postJson('/api/stop-all'); pollState(); });
 
 el('rotateIdentity').addEventListener('click', async () => {
-  const result = await postJson('/api/identity/rotate', { randomizeAdapter: el('randomAdapter').checked });
+  const result = await postJson('/api/identity/rotate', {});
   if (!result || !result.ok) {
     appendLog({ time: '', level: 'error', text: (result && result.error) || '更换身份失败' });
     return;

@@ -79,11 +79,16 @@ internal static class Program
     private static int RunWeb(Options options, bool openBrowser = false)
     {
         var port = options.Int("port", 8737);
+        var config = AppConfig.Load(options.Text("config"));
+        config.RotateIdentityOnStart = !options.Flag("fixed-identity");
+        config.UseAdapterOverride = !options.Flag("fixed-adapter");
+        config.PrepareForRun(BluetoothDevices.TryGetLocalAdapterAddress());
+
         var manager = new SessionManager(
             options.Double("lat", 31.2304),
             options.Double("lon", 121.4737),
-            options.Text("profile"));
-        var favorites = new FavoriteStore();
+            config);
+        var favorites = new FavoriteStore(config);
 
         // Let a custom build warm up its identity source before any session starts.
         IdentitySource.Prime();
@@ -168,34 +173,23 @@ internal static class Program
                      "The phone ignores location data from an unauthenticated accessory.");
         }
 
-        var profilePath = options.Text("profile") ?? AccessoryProfile.DefaultPath;
-        var profile = AccessoryProfile.Load(profilePath);
+        var config = AppConfig.Load(options.Text("config"));
+        config.RotateIdentityOnStart = !options.Flag("fixed-identity");
+        config.UseAdapterOverride = !options.Flag("fixed-adapter");
+
         var localAdapter = BluetoothDevices.TryGetLocalAdapterAddress();
+        config.PrepareForRun(localAdapter);
 
-        if (options.Flag("new-identity"))
+        // Command line overrides apply to this run only; the file keeps the generated identity.
+        var effective = config.EffectiveProfile;
+        var profile = effective with
         {
-            profile = profile.Rotate();
-        }
-
-        if (options.Flag("random-adapter"))
-        {
-            profile = profile with { AdapterAddress = AccessoryProfile.RandomAdapterAddress(localAdapter) };
-        }
-
-        if (options.Flag("new-identity"))
-        {
-            profile.Save(profilePath);
-            Log.Ok($"配件身份已更换：serial {profile.Serial} → {profilePath}");
-        }
-
-        profile = profile with
-        {
-            Name = options.Text("name", profile.Name),
-            Model = options.Text("model", profile.Model),
-            Manufacturer = options.Text("manufacturer", profile.Manufacturer),
-            Serial = options.Text("serial", profile.Serial),
-            Firmware = options.Text("firmware", profile.Firmware),
-            Hardware = options.Text("hardware", profile.Hardware),
+            Name = options.Text("name", effective.Name),
+            Model = options.Text("model", effective.Model),
+            Manufacturer = options.Text("manufacturer", effective.Manufacturer),
+            Serial = options.Text("serial", effective.Serial),
+            Firmware = options.Text("firmware", effective.Firmware),
+            Hardware = options.Text("hardware", effective.Hardware),
         };
 
         var identity = profile.ToIdentity();
@@ -214,8 +208,8 @@ internal static class Program
             }
             else if (reported is not null)
             {
-                Log.Warn($"上报的蓝牙地址已改写为 {string.Join(':', reported.Select(b => b.ToString("X2")))}" +
-                         "（实验项；识别被拒时去掉 --random-adapter）");
+                Log.Info($"reported Bluetooth address {string.Join(':', reported.Select(b => b.ToString("X2")))} " +
+                         "(generated on first run, stored in the config file)");
             }
             else
             {
@@ -410,7 +404,7 @@ internal static class Program
               iap2loc run --transport tcp --host 127.0.0.1 --port 12345 [--identity 目录] [选项]
               iap2loc devices
               iap2loc inspect-identity [--identity 目录]
-              iap2loc serve [--port 8737] [--identity 目录] [--profile 文件]   启动本地控制页面
+              iap2loc serve [--port 8737] [--identity 目录] [--config 文件]   启动本地控制页面
 
             运行选项:
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
@@ -418,9 +412,9 @@ internal static class Program
               --sentences gga,rmc,gsa,gsv          NMEA 句子集合（默认 gga,rmc）
               --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
-              --profile            配件身份文件（默认 %LOCALAPPDATA%/iap2loc/accessory.json）
-              --new-identity       生成并保存一个新的配件身份（serial、name）
-              --random-adapter     上报随机蓝牙地址（实验项，可能被识别拒绝）
+              --config             配置文件（默认 iap2loc.json，位于程序目录）
+              --fixed-identity     不轮换配件身份（默认每次启动换一个 serial）
+              --fixed-adapter      不随机蓝牙地址，上报本机适配器地址
               --name --model --manufacturer --serial --firmware --hardware   覆盖本次运行的身份字段
               --probe              只跑到识别为止（收到 0x1D02/0x1D03 即退出）
               --duration           多少秒后自动退出，便于脚本测试

@@ -12,6 +12,9 @@ releases/
 build/
 Native/*.dylib
 
+# 运行时生成的配置与收藏（含配件身份）
+iap2loc.json
+
 # MFi 身份材料：私钥与证书链，任何情况下都不要提交
 identity.pk8
 certificate.p7b

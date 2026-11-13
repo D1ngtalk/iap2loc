@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Security.Cryptography;
-using System.Text.Json;
 
 namespace Iap2Loc.Protocol;
 
@@ -8,19 +7,11 @@ namespace Iap2Loc.Protocol;
 /// Everything iOS sees as "which accessory is this": the identification strings plus, optionally,
 /// the Bluetooth address reported in transport component 17.
 ///
-/// Rotating it is the cheapest way to find out whether iOS keeps per-accessory state (last known
-/// location, trust) that survives reconnects. The profile is a file so the identity stays stable
-/// between runs; a new one is generated on demand instead of on every start.
+/// The serial is rotated on every start (see <see cref="Rotate"/>), the adapter address is generated
+/// once and then reused, so iOS sees a new accessory on the same Bluetooth link each run.
 /// </summary>
 internal sealed record AccessoryProfile
 {
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-    };
-
     public string Name { get; init; } = "iAP2 Loc";
     public string Model { get; init; } = "Loc1,1";
     public string Manufacturer { get; init; } = "carplay-loc";
@@ -29,27 +20,12 @@ internal sealed record AccessoryProfile
     public string Hardware { get; init; } = "1.0";
 
     /// <summary>
-    /// Overrides the adapter address in component 17. Null keeps the real one. Experimental: iOS may
-    /// cross-check the reported address against the link, in which case identification gets rejected.
+    /// Overrides the adapter address in component 17. Null keeps the real one. iOS accepts the
+    /// rewritten value, so the accessory looks like another unit from the same vendor.
     /// </summary>
     public string? AdapterAddress { get; init; }
 
     public static AccessoryProfile Default { get; } = new();
-
-    public static string DefaultPath
-    {
-        get
-        {
-            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(root))
-            {
-                root = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
-            }
-
-            return Path.Combine(root, "iap2loc", "accessory.json");
-        }
-    }
 
     public AccessoryIdentity ToIdentity() => new(Name, Model, Manufacturer, Serial, Firmware, Hardware);
 
@@ -86,7 +62,6 @@ internal sealed record AccessoryProfile
         {
             Serial = serial,
             Name = "iAP2 Loc " + serial[^4..],
-            AdapterAddress = null,
         };
     }
 
@@ -103,38 +78,7 @@ internal sealed record AccessoryProfile
         return string.Join(':', bytes.Select(value => value.ToString("X2")));
     }
 
-    public static AccessoryProfile Load(string path)
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return Default;
-            }
-
-            var profile = JsonSerializer.Deserialize<AccessoryProfile>(File.ReadAllText(path), Json);
-            return profile?.Sanitize() ?? Default;
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"配件身份文件无法读取，改用默认身份：{ex.Message}");
-            return Default;
-        }
-    }
-
-    public void Save(string path)
-    {
-        var full = Path.GetFullPath(path);
-        var directory = Path.GetDirectoryName(full);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(full, JsonSerializer.Serialize(this, Json));
-    }
-
-    private AccessoryProfile Sanitize() => this with
+    public AccessoryProfile Sanitize() => this with
     {
         Name = Clean(Name, Default.Name),
         Model = Clean(Model, Default.Model),
