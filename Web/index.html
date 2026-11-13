@@ -112,6 +112,16 @@
       </section>
 
       <section>
+        <h2>设备<span class="grow"></span><button id="refreshDevices" class="mini">刷新</button></h2>
+        <div id="sessions"></div>
+        <div class="row" style="margin-top:8px">
+          <select id="deviceSelect" style="flex:1"><option>正在读取…</option></select>
+          <button id="addDevice" class="primary mini">添加</button>
+        </div>
+        <div class="row"><label style="width:auto">显示全部</label><input id="showAll" type="checkbox" /><span class="hint" style="margin:0">含非 Apple 设备</span></div>
+      </section>
+
+      <section>
         <h2>目标<span class="grow"></span></h2>
         <div class="seg" id="modes"></div>
 
@@ -164,16 +174,6 @@
       </section>
 
       <section>
-        <h2>设备<span class="grow"></span><button id="refreshDevices" class="mini">刷新</button></h2>
-        <div id="sessions"></div>
-        <div class="row" style="margin-top:8px">
-          <select id="deviceSelect" style="flex:1"><option>正在读取…</option></select>
-          <button id="addDevice" class="primary mini">添加</button>
-        </div>
-        <div class="row"><label style="width:auto">显示全部</label><input id="showAll" type="checkbox" /><span class="hint" style="margin:0">含非 Apple 设备</span></div>
-      </section>
-
-      <section>
         <h2>收藏<span class="grow"></span></h2>
         <div id="favorites"><p class="hint">点右上角「收藏当前」保存坐标。</p></div>
       </section>
@@ -181,6 +181,9 @@
       <section>
         <details>
           <summary>高级设置</summary>
+          <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
+          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换身份与蓝牙地址</button></div>
+          <p class="hint">启动时已自动换过一次；按钮会同时更换身份和蓝牙地址，对之后新添加的设备生效。</p>
           <div class="row"><label>周期 ms</label><input id="rate" type="number" min="10" step="10" value="250" /></div>
           <div class="row"><label>定位质量</label>
             <select id="quality">
@@ -197,9 +200,6 @@
           </div>
           <div class="row"><label>卫星数</label><input id="satellites" type="number" min="0" max="99" step="1" value="8" /></div>
           <div class="row"><label>MFi密钥</label><input id="identity" placeholder="留空 = 用内置密钥" /></div>
-          <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
-          <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换身份与蓝牙地址</button></div>
-          <p class="hint">启动时已自动换过一次；按钮会同时更换身份和蓝牙地址，对之后新添加的设备生效。</p>
           <div class="row"><label>传输</label>
             <select id="transport">
               <option value="bt">蓝牙 RFCOMM</option>
