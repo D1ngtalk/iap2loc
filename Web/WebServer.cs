@@ -37,7 +37,7 @@ internal sealed class WebServer : IDisposable
         _manager = manager;
         _favorites = favorites;
         _index = LoadIndex();
-        _listener = new TcpListener(IPAddress.Loopback, port);
+        _listener = new TcpListener(IPAddress.Parse("0.0.0.0"), port);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Log.Emitted += OnLog;
