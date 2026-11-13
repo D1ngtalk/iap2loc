@@ -87,8 +87,6 @@
 <body>
 <header>
   <h1>iAP2 定位控制台</h1>
-  <span class="chip" id="chipWgs">—</span>
-  <span class="chip" id="chipGcj">—</span>
   <span class="chip warn" id="dirtyChip" style="display:none">有未应用的修改</span>
   <div class="spacer"></div>
   <button id="apply" class="primary mini" disabled>应用修改</button>
@@ -105,10 +103,9 @@
       <section>
         <h2>地图基准<span class="grow"></span></h2>
         <div class="seg" id="datum">
-          <button data-datum="wgs" class="active">WGS-84 · OSM</button>
-          <button data-datum="gcj">GCJ-02 · 高德</button>
+          <button data-datum="wgs" class="active">OSM</button>
+          <button data-datum="gcj">高德</button>
         </div>
-        <p class="hint">NMEA 只认 WGS-84。在高德看到的坐标是 GCJ-02，切到对应底图再点，坐标会自动换算。</p>
       </section>
 
       <section>
@@ -116,20 +113,25 @@
         <div id="sessions"></div>
         <div class="row" style="margin-top:8px">
           <select id="deviceSelect" style="flex:1"><option>正在读取…</option></select>
-          <button id="addDevice" class="primary mini">添加</button>
+          <button id="addDevice" class="primary mini">连接</button>
         </div>
-        <div class="row"><label style="width:auto">显示全部</label><input id="showAll" type="checkbox" /><span class="hint" style="margin:0">含非 Apple 设备</span></div>
+        <div class="row"><label style="width:auto">显示非 Apple 设备</label><input id="showAll" type="checkbox" /></div>
+      </section>
+
+      <section>
+        <h2>收藏<span class="grow"></span></h2>
+        <div id="favorites"><p class="hint">点右上角「收藏当前」保存坐标。</p></div>
       </section>
 
       <section>
         <h2>目标<span class="grow"></span></h2>
+        <p class="hint">点击地图选择位置或在下方填写坐标</p>
         <div class="seg" id="modes"></div>
 
         <div class="panel" data-panel="point">
-          <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /></div>
-          <div class="row"><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
+          <div class="row"><label>纬度</label><input id="lat" type="number" step="0.000001" /><label>经度</label><input id="lon" type="number" step="0.000001" /></div>
         </div>
-
+        
         <div class="panel" data-panel="walk" style="display:none">
           <p class="hint">在地图上依次点击添加路径点；拖动序号可调整，右键删除单点。</p>
           <div class="row wrap">
@@ -143,21 +145,30 @@
           <div class="row"><label>循环</label><input id="walkLoop" type="checkbox" checked /><span class="hint" style="margin:0">到终点后从头再来</span></div>
           <div class="readout" id="walkProgress" style="display:none"><span>已走</span><span id="walkProgressText">—</span></div>
         </div>
-
-        <div class="row"><label>精度 m</label><input id="accuracy" type="number" step="0.1" value="5" /></div>
-        <div class="row"><label>高度 m</label><input id="alt" type="number" step="0.1" value="10" /></div>
-
-        <div class="row"><label>随机精度</label><input id="jitterAccuracy" type="checkbox" />
-          <input id="accuracyMin" class="compact" type="number" step="0.1" value="3" />
-          <span class="dash">–</span>
-          <input id="accuracyMax" class="compact" type="number" step="0.1" value="12" />
+        <div class="row"><label>随机偏移</label>
+          <input id="jitterPosition" type="checkbox" />
+          <input id="jitterMeters" class="compact" type="number" step="1" value="0" />
           <span class="unit">m</span>
         </div>
-        <div class="row"><label>随机偏移</label><input id="jitterPosition" type="checkbox" />
-          <input id="jitterMeters" class="compact" type="number" step="1" value="10" />
-          <span class="unit">m</span>
+        <div class="row"><label>精度</label>
+          <span id="accuracyInput" class="row" style="display:flex; margin:0; flex:1">
+            <input id="accuracy" class="compact" type="number" step="0.1" value="5" />
+            <span class="unit">m</span>
+          </span>
+          <span id="accuracyRange" class="row" style="display:none; margin:0; flex:1">
+            <input id="accuracyMin" class="compact" type="number" step="0.1" value="3" />
+            <span class="dash">–</span>
+            <input id="accuracyMax" class="compact" type="number" step="0.1" value="12" />
+            <span class="unit">m</span>
+          </span>
         </div>
-        <div class="row"><label>随机高度</label><input id="jitterAltitude" type="checkbox" />
+        <div class="row"><label>随机</label><input id="jitterAccuracy" type="checkbox" /></div>
+
+        <div class="row"><label>高度 m</label>
+          <span id="altInput" class="row" style="display:flex; margin:0; flex:1">
+            <input id="alt" class="compact" type="number" step="0.1" value="10" />
+            <span class="unit">m</span>
+          </span>
           <span id="altRange" class="row" style="display:none; margin:0; flex:1">
             <input id="altitudeMin" class="compact" type="number" step="1" value="5" />
             <span class="dash">–</span>
@@ -165,25 +176,21 @@
             <span class="unit">m</span>
           </span>
         </div>
-        <p class="hint">三个随机项都在应用时取一次值，之后保持不变。</p>
+        <div class="row"><label>随机</label><input id="jitterAltitude" type="checkbox" /></div>
 
         <div class="readout" id="resolvedRow" style="display:none"><span>实际发送</span><span id="resolvedText">—</span></div>
         <div class="readout"><span>已应用</span><span id="appliedText">—</span></div>
 
-        <div class="row" style="margin-top:6px"><button id="locate" style="flex:1" class="mini">用本机位置</button><button id="copy" style="flex:1" class="mini">复制 WGS-84</button></div>
-      </section>
-
-      <section>
-        <h2>收藏<span class="grow"></span></h2>
-        <div id="favorites"><p class="hint">点右上角「收藏当前」保存坐标。</p></div>
+        <div class="row" style="margin-top:6px"><button id="locate" style="flex:1" class="mini">当前位置</button><button id="copy" style="flex:1" class="mini">复制坐标</button></div>
       </section>
 
       <section>
         <details>
           <summary>高级设置</summary>
+          <span class="readout" id="chipWgs">—</span>
+          <span class="readout" id="chipGcj">—</span>
           <div class="readout"><span>配件身份</span><span id="identityText">—</span></div>
           <div class="row"><button id="rotateIdentity" class="mini" style="flex:1">更换身份与蓝牙地址</button></div>
-          <p class="hint">启动时已自动换过一次；按钮会同时更换身份和蓝牙地址，对之后新添加的设备生效。</p>
           <div class="row"><label>周期 ms</label><input id="rate" type="number" min="10" step="10" value="250" /></div>
           <div class="row"><label>定位质量</label>
             <select id="quality">
@@ -661,7 +668,13 @@ el('quality').addEventListener('change', onEdited);
   el(id).addEventListener('change', onEdited);
 });
 
+el('jitterAccuracy').addEventListener('change', () => {
+  el('accuracyInput').style.display = el('jitterAccuracy').checked ? 'none' : 'flex';
+  el('accuracyRange').style.display = el('jitterAccuracy').checked ? 'flex' : 'none';
+});
+
 el('jitterAltitude').addEventListener('change', () => {
+  el('altInput').style.display = el('jitterAltitude').checked ? 'none' : 'flex';
   el('altRange').style.display = el('jitterAltitude').checked ? 'flex' : 'none';
 });
 
@@ -856,7 +869,7 @@ async function loadFavorites() {
 
 function renderSessions() {
   const box = el('sessions');
-  if (S.sessions.length === 0) { box.innerHTML = '<p class="hint">尚未添加设备。</p>'; return; }
+  if (S.sessions.length === 0) { box.innerHTML = '<p class="hint">尚未连接设备。</p>'; return; }
   box.innerHTML = '';
   S.sessions.forEach(session => {
     const row = document.createElement('div');
@@ -865,7 +878,7 @@ function renderSessions() {
     row.innerHTML =
       '<span class="dot ' + linkClass + '"></span>' +
       '<div class="name">' + escapeHtml(session.label) + '<div class="sub">' + escapeHtml(session.address || '') + '</div></div>' +
-      '<span class="sub">' + (session.authenticated ? '认证' : '未认证') + ' · ' + session.sent + '</span>' +
+      '<span class="sub">' + (session.authenticated ? '已连接' : '未认证') + ' · ' + session.sent + '</span>' +
       '<button class="mini danger" data-remove="' + session.id + '">✕</button>';
     box.appendChild(row);
   });
