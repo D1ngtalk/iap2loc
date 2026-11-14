@@ -9,7 +9,8 @@ It sends location information (NMEA) to iOS devices over the iAP2
 protocol and provides a local web console for device management,
 map-based location picking, and parameter configuration. iOS fuses
 multiple location sources, so a successful connection does not guarantee
-that the system location will change.
+that the system location will change.  
+>⚠️ macOS is currently only experimentally supported and has not been tested in real environments. Availability is not guaranteed
 
 ## Downloads and system requirements
 
