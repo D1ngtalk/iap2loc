@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Iap2Loc.Engine;
 using Iap2Loc.Protocol;
 using Iap2Loc.Transport;
@@ -19,6 +20,7 @@ internal sealed class WebServer : IDisposable
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private readonly TcpListener _listener;
@@ -35,7 +37,7 @@ internal sealed class WebServer : IDisposable
         _manager = manager;
         _favorites = favorites;
         _index = LoadIndex();
-        _listener = new TcpListener(IPAddress.Loopback, port);
+        _listener = new TcpListener(IPAddress.Parse("0.0.0.0"), port);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Log.Emitted += OnLog;
@@ -399,37 +401,103 @@ internal sealed class WebServer : IDisposable
 
     private sealed class TargetPayload
     {
+        public string? Mode { get; set; }
+        public List<RoutePointPayload>? Route { get; set; }
+        public double? PathSpeedKmh { get; set; }
+        public bool? PathLoop { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
         public double? Accuracy { get; set; }
         public double? Speed { get; set; }
         public double? Bearing { get; set; }
-        public bool? JitterPosition { get; set; }
         public double? JitterMeters { get; set; }
         public bool? JitterAccuracy { get; set; }
         public double? AccuracyMin { get; set; }
         public double? AccuracyMax { get; set; }
         public int? Quality { get; set; }
         public int? Satellites { get; set; }
+        public bool? JitterAltitude { get; set; }
+        public double? AltitudeMin { get; set; }
+        public double? AltitudeMax { get; set; }
         public int? Rate { get; set; }
 
         public TargetUpdate ToUpdate() => new()
         {
+            Mode = ParseMode(Mode),
+            Route = ParseRoute(Route),
+            PathSpeedMps = PathSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.1, 180) / 3.6 : null,
+            PathLoop = PathLoop,
             Latitude = Latitude,
             Longitude = Longitude,
             Altitude = Altitude,
             Accuracy = Accuracy,
             Speed = Speed,
             Bearing = Bearing,
-            JitterPosition = JitterPosition,
             JitterMeters = JitterMeters,
             JitterAccuracy = JitterAccuracy,
             AccuracyMin = AccuracyMin,
             AccuracyMax = AccuracyMax,
             Quality = Quality,
             Satellites = Satellites,
+            JitterAltitude = JitterAltitude,
+            AltitudeMin = AltitudeMin,
+            AltitudeMax = AltitudeMax,
         };
+
+        private static TargetMode? ParseMode(string? text) => text?.Trim().ToLowerInvariant() switch
+        {
+            "path" or "route" => TargetMode.Path,
+            "point" or "single" => TargetMode.Point,
+            _ => null,
+        };
+
+        /// <summary>null keeps the current route; an empty array clears it.</summary>
+        private static IReadOnlyList<RouteVertex>? ParseRoute(List<RoutePointPayload>? points)
+        {
+            if (points is null)
+            {
+                return null;
+            }
+
+            var parsed = new List<RouteVertex>(Math.Min(points.Count, LocationTarget.MaxRoutePoints));
+            foreach (var point in points)
+            {
+                if (point.Latitude is not { } latitude || point.Longitude is not { } longitude)
+                {
+                    continue;
+                }
+
+                if (double.IsNaN(latitude) || double.IsNaN(longitude) ||
+                    Math.Abs(latitude) > 90 || Math.Abs(longitude) > 180)
+                {
+                    continue;
+                }
+
+                var altitude = point.Altitude is { } value && !double.IsNaN(value) ? value : (double?)null;
+                var time = point.Time is { } milliseconds && !double.IsNaN(milliseconds) && milliseconds > 0
+                    ? milliseconds / 1000.0
+                    : (double?)null;
+                parsed.Add(new RouteVertex(new GeoPoint(latitude, longitude, altitude), time));
+
+                if (parsed.Count >= LocationTarget.MaxRoutePoints)
+                {
+                    break;
+                }
+            }
+
+            return parsed;
+        }
+    }
+
+    private sealed class RoutePointPayload
+    {
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public double? Altitude { get; set; }
+
+        /// <summary>GPX timestamp in epoch milliseconds.</summary>
+        public double? Time { get; set; }
     }
 
     private sealed class StartSessionPayload

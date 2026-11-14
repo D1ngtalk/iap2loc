@@ -28,7 +28,7 @@ internal sealed class LocationSession : IDisposable
     private int _pushed;
     private bool _disposed;
 
-    /// <summary>A displacement beyond this is a new target, not jitter or walking.</summary>
+    /// <summary>A displacement beyond this is a new target, not jitter or a path step.</summary>
     private const double JumpThresholdMeters = 100;
 
     /// <summary>Reported on the jump frame: about 900 km/h, an airliner rather than a teleport.</summary>
@@ -185,7 +185,13 @@ internal sealed class LocationSession : IDisposable
             }
 
             var state = _target.Snapshot();
-            Log.Info($"streaming {PlannedInterval()} ms NMEA for {state.Latitude:F6},{state.Longitude:F6}");
+            Log.Info(state.Mode == TargetMode.Path
+                ? $"streaming {PlannedInterval()} ms NMEA along {state.RoutePoints} points " +
+                  (state.PathTimed
+                      ? $"({state.RouteLengthMeters / 1000:F2} km over " +
+                        $"{TimeSpan.FromSeconds(state.PathDurationSeconds):hh\\:mm\\:ss} of GPX time)"
+                      : $"({state.RouteLengthMeters / 1000:F2} km at {state.PathSpeedMps * 3.6:F1} km/h)")
+                : $"streaming {PlannedInterval()} ms NMEA for {state.Latitude:F6},{state.Longitude:F6}");
             _timer = new Timer(_ => Push(), null, 0, Timeout.Infinite);
         }
     }
