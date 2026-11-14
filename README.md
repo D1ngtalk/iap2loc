@@ -2,151 +2,109 @@
 
 **中文** · [English](README.en.md)
 
-Windows 下的 iAP2 定位客户端，通过 iAP2 协议向 iOS 设备下发定位（NMEA），并提供一个本地 Web 控制台用于选点和调参。
+跨平台 iAP2 定位客户端，支持 **Windows 10/11 x64** 与 **macOS Apple Silicon (arm64) / Intel (x64)**。
 
-定位最终由 iOS 统一融合：配件只是其中一个来源，并不等于系统级替换。
+通过 iAP2 协议向 iOS 设备下发定位信息（NMEA），并提供本地 Web 控制台管理设备、地图选点和参数。iOS 会融合多种定位来源，因此连接成功不保证系统定位一定改变。
+
+## 下载与系统要求
+
+从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 获取对应版本；或 [从源码构建](#源码构建与-ci)
+| 平台 | 构建产物 | 要求 |
+| --- | --- | --- |
+| Windows 10/11 x64 | `iap2loc-windows-x64.exe` | 已配对的蓝牙设备、MFi密钥 |
+| Windows 10/11 x64 | `iap2loc-windows-x64-bundled.exe` | 已配对的蓝牙设备 (无需密钥文件) |
+| macOS Apple Silicon | `iap2loc-macos-arm64.dmg` | macOS 蓝牙权限、已配对设备、MFi密钥 |
+| macOS Intel | `iap2loc-macos-x64.dmg` | macOS 蓝牙权限、已配对设备、MFi密钥 |
+
+发布版为自包含程序，通常无需另装 .NET；源码构建需要 **.NET 10 SDK**。macOS 版本为 ad-hoc 签名、**未进行 Apple Developer ID 公证**，仅在信任构建来源时通过系统设置批准打开，不要全局关闭 Gatekeeper。
 
 ## 快速开始
 
-### 1. 准备
-
-- 从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 下载 `iap2loc-windows-x64.exe` 或 [构建](#构建) 你自己的版本 (需要一份可用的 MFi 配件身份 `identity.pk8` + `certificate.p7b` ，放入 `./identity` 文件夹，仓库不包含任何身份材料)
-- 在 Windows「设置 → 蓝牙和其他设备」中配对 iOS 设备
-
-### 2. 连接
-
-1. 双击下载的 exe，浏览器会自动打开控制台 <http://localhost:8737/>
-2. 在「设备」下拉中选中刚配对的 iOS 设备（默认只列 Apple 设备，可勾「显示全部」）
-3. 点「添加」，按日志确认三个关键节点：
-   - `0x1D02 IdentificationAccepted`：识别通过
-   - `0xAA05 AuthenticationSucceeded`：认证通过，说明身份材料有效
-   - `0xFFFA StartLocationInformation`：iOS 已订阅定位
-
-### 3. 选点
-
-1. 在地图上点击目标位置，或用收藏、本机定位填充
-2. 按需调整精度、高度、上报周期；随机偏移与精度区间在「高级设置」里
-3. 点「应用修改」，下一次上报（默认 1 秒）即生效，不需要重连
-4. 多台设备可以同时连接，共享同一个目标点
-
-### 4. 在 iOS 上切换定位源
-
-定位没有变化时，按下面的顺序走一遍：
-
-1. **关闭 Wi-Fi、数据流量和定位服务**，等待十秒后重新打开定位服务——此时不要打开 Wi-Fi。
-2. **打开「地图」**，确认定位源已经切换到 iAP2（蓝点应落在设定的坐标上，而不是设备实际所在位置）。
-3. **打开 Wi-Fi，但不要打开数据流量**，等定位稳定后再打开数据流量。
-
-原因是 Wi-Fi 与基站定位、以及其他 Apple 设备缓存的定位都会参与系统融合，
-先把这些来源摘掉，配件上报的位置才会被当成当前来源。
+1. **安装**：Windows 运行下载的 EXE；macOS 打开对应架构 DMG，将 App 拖入 Applications，并在「系统设置 → 隐私与安全性 → 蓝牙」允许访问。
+2. **配对**：先在操作系统的蓝牙设置中配对 iPhone。macOS 使用 IOBluetooth 发现已配对设备、查询 SDP 并尝试建立 RFCOMM；设备被列出不代表它公开 iAP2 服务。
+3. **打开控制台**：启动应用，访问 <http://127.0.0.1:8737/>。
+4. **连接设备**：在「设备」中添加你的iOS设备，并确保连接状态变为「已认证」
+5. **设置坐标**：在地图上选择位置，调整精度、高度、周期等，点击「应用修改」。多设备可使用同一目标坐标。定位最终是否变化取决于 iOS 的定位融合。
+6. **在设备上切换定位源**:  
+  Ⅰ. **关闭 Wi-Fi、数据流量和定位服务**，等待十秒后重新打开定位服务——此时不要打开 Wi-Fi。  
+  Ⅱ. **打开「地图」**，确认定位源已经切换到 iAP2（蓝点应落在设定的坐标上，而不是设备实际所在位置）。  
+  Ⅲ. **打开 Wi-Fi，但不要打开数据流量**，等定位稳定后再打开数据流量。  
+  > **重复以上步骤多次仍无法修改定位**：在某些情况下，受到其他定位来源缓存的影响，地图可能会显示一个大致范围圈，并提示 "无法确定你的位置"。此时请关闭Wi-Fi、数据流量和定位服务并重启设备，重启并连接蓝牙设置坐标后再从步骤Ⅱ开始。
 
 ## 功能
 
-- **地图选点**：OSM（WGS-84）与高德（GCJ-02）底图一键切换，坐标自动换算，避免国内外基准差导致的偏移
-- **实时改点**：点地图 → 点「应用修改」，下一次上报即生效，无需重连或重新认证
-- **多设备**：每台 iOS 设备一条独立会话，共享同一个目标点；Web 端可单独停止或移除
-- **设备发现**：自动枚举已配对的蓝牙设备，按名称 / 设备类 / OUI 判断并优先展示 Apple 设备
-- **随机化**：可选的坐标偏移与精度抖动，在设定目标时掷一次，之后固定不变
-- **收藏**：常用坐标保存在 `%LOCALAPPDATA%\iap2loc\favorites.json`
+- **跨平台传输**：Windows 蓝牙、macOS IOBluetooth/SDP/RFCOMM
+- **Web 控制台**：设备列表、连接会话、地图选点、实时调整、多设备管理。
+- **地图与坐标**：OpenStreetMap WGS-84 / 高德 GCJ-02，自动坐标转换；收藏点。
+- **NMEA**：GGA 和 RMC；定位质量（0–8）、卫星数（0–99）、速度、航向、高度和精度。
+- **上报周期**：默认 250 ms、最小 10 ms；设备在 `0xFFFA` 指定的订阅周期优先于 `--rate`。
+- **配件身份**：配置文件 `iap2loc.json` 保存配置及收藏；默认每次启动轮换配件名称与序列号，蓝牙地址可由配置管理；支持手动更换身份与地址。请注意这不等于修改真实蓝牙硬件地址或保证绕过 iOS 定位融合。
+- **跨距离变化**：对超过 100 m 的位移，程序可在过渡帧携带速度与航向信息。此行为不保证 iOS 接受该位置。
 
-## 环境
+## 命令行
 
-| 项 | 要求 |
-|---|---|
-| 系统 | Windows 10 / 11 x64 |
-| 运行时 | 发布版自包含，无需安装 .NET；构建需要 .NET 10 SDK |
-| 蓝牙 | 使用蓝牙链路时，iOS 设备需先在 Windows 蓝牙设置里完成配对 |
-| 身份 | 需要一份可用的 MFi 配件身份（`identity.pk8` + `certificate.p7b`）；仓库不包含任何身份材料 |
-
-## 构建
+在 Windows 的可执行文件所在目录，或 macOS App 的 `Contents/MacOS` 目录运行（按实际文件名调用）：
 
 ```bash
-dotnet build -c Release
-
-# 单文件、自包含，产出 dist/iap2loc.exe
-dotnet publish -c Release -r win-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+./iap2loc devices
+./iap2loc serve --port 8737
+./iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --lat 31.2304 --lon 121.4737
+./iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe -v
+./iap2loc run --transport tcp --host 127.0.0.1 --port 12345 --lat 31.2304 --lon 121.4737
+./iap2loc inspect-identity --identity ./identity
 ```
 
-## 使用
+| 参数 | 用途 |
+| --- | --- |
+| `--lat`, `--lon` | 目标纬度、经度 |
+| `--alt`, `--speed`, `--bearing`, `--accuracy` | NMEA 附加字段 |
+| `--quality`, `--satellites` | GGA 质量与卫星数，默认 1 / 8 |
+| `--rate` | 默认周期（毫秒），设备订阅值优先 |
+| `--identity` | MFi 身份目录 |
+| `--config` | 配置文件路径（默认程序目录的 `iap2loc.json`） |
+| `--fixed-identity`, `--fixed-adapter` | 禁用对应的身份或地址随机行为 |
+| `--probe`, `-v` | 仅探测识别、详细协议日志 |
 
-图形界面的完整流程见[快速开始](#快速开始)。周期、定位质量、卫星数、MFi 密钥、传输方式、随机偏移都在「高级设置」里；配件身份每次启动自动更换，也可在那里立即换一次。
-如果 iPhone 在订阅定位时指定了上报间隔（`0xFFFA` 里的 `0x8001` / `0x8002`），以设备指定的为准，`--rate` 只作为设备没提要求时的默认值。可以只启动控制台：
+`--sentences` 已移除，当前仅发送 GGA/RMC。
 
-```bash
-iap2loc serve --port 8737
-```
+## MFi 身份与安全
 
-### 命令行
+完成 MFi 认证需要**合法取得**的配件身份，仓库不包含私钥或证书：
 
-```bash
-iap2loc devices                       # 列出已配对的蓝牙设备
-iap2loc serve --port 8737             # 只启动控制台
-
-iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF \
-  --lat 31.2304 --lon 121.4737
-
-iap2loc run --transport tcp --host 127.0.0.1 --port 12345 \
-  --lat 31.2304 --lon 121.4737
-
-iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # 只验证到识别为止
-```
-
-常用参数：
-
-| 参数 | 说明 |
-|---|---|
-| `--lat` / `--lon` | 目标坐标，默认 31.2304, 121.4737 |
-| `--alt` / `--speed` / `--bearing` / `--accuracy` | 写入 NMEA 的附加字段 |
-| `--quality` | GGA 定位质量 0–8，默认 1（GPS 单点） |
-| `--satellites` | GGA 卫星数 0–99，默认 8 |
-| `--rate` | 上报周期（毫秒），默认 250，最小 10 |
-| `--identity` | MFi 密钥目录（`identity.pk8` + `certificate.p7b`）；缺省时链路与识别可用，认证不会通过 |
-| `--config` | 配置文件，默认程序目录下的 `iap2loc.json` |
-| `--fixed-identity` | 不轮换配件身份（默认每次启动换一个 serial） |
-| `--fixed-adapter` | 上报本机蓝牙地址（默认首次启动生成一个随机值并固定） |
-| `--name` / `--model` / `--serial` … | 覆盖本次运行的身份字段 |
-| `--probe` | 收到 `0x1D02` / `0x1D03` 即退出 |
-| `-v` | 打印协议级日志 |
-
-只发送 GGA + RMC 两条句子（iOS 的 `0xFFFA` 也只订阅这两条），`--sentences` 已移除。
-
-## 配置与收藏
-
-程序目录下的 `iap2loc.json` 保存配件身份、随机开关和收藏点：
-
-- 每次启动生成新的 `serial` 与 `name`，iOS 会把它当成一台新配件。iOS 按配件记住上一次的定位，跨城修改时这一步是必要的。
-- 蓝牙地址在首次启动时生成，之后固定，配对关系不变。
-- 收藏点写在同一个文件里。
-- `--config` 可以指向别的文件；`--fixed-identity` / `--fixed-adapter` 临时关掉随机；删掉文件即回到默认身份。
-
-## MFi 密钥
-
-```bash
-iap2loc inspect-identity --identity ./identity   # 查看证书链与扩展
-iap2loc run ... --identity ./identity
-```
-
-目录内需包含：
-
-```
+```text
 identity/
-├─ identity.pk8        PKCS#8 DER，P-256 私钥
-└─ certificate.p7b     配件证书链（原样下发）
+├── identity.pk8       # PKCS#8 DER P-256 私钥
+└── certificate.p7b    # 配件证书链
 ```
 
-`--identity` 可以指向任意位置；不提供时链路与识别仍可用，只是认证不会通过。仓库不包含任何身份材料。
+可通过 `--identity ./identity` 指定路径。不提供身份时可以排查设备发现、链路和识别，但不能完成 MFi 认证。**不要将密钥、证书、配置中的秘密或真实设备日志提交到 GitHub。**
 
-## 注意事项
+## 源码构建与 CI
 
-- **失败优先看日志**：`--probe` 可在不涉及认证的情况下确认识别是否被接受；`-v` 打印完整的协议往返。
-- **远距离改点**：位移超过 100 m 的那一帧会按 250 m/s（约 900 km/h）、指向目标方位上报速度和航向，下一帧恢复静止，避免“静止 + 瞬移”的矛盾数据被丢弃。
-- **合规**：请仅用于自有设备、协议研究与隐私测试。将定位伪造用于考勤、网约车、保险里程、游戏等场景可能构成欺诈或违约；使用来源不明的 MFi 身份可能违反 Apple 的授权条款。仓库不提供任何认证材料，使用者需自行确保身份来源合法。
+```bash
+dotnet build Iap2Loc.csproj -c Release
+# Windows 自包含单文件
+dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+# macOS：在对应架构的 Mac 上使用仓库脚本
+bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
+# Intel Mac 改为 x64
+```
 
-## 许可
+macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。自动化工作流：[macOS](.github/workflows/macos.yml)；它分别使用 ARM64 与 Intel runner 构建、挂载并冒烟测试 DMG。普通 push/PR 仅上传 Actions Artifact；发布或手动重跑指定 tag 时才尝试将两个 DMG 附加到已有 Release。具体以该次工作流结果为准。
 
-本项目以 GNU General Public License v3.0 发布，全文见 [LICENSE](LICENSE)。
+## 故障排查
 
-实现思路参考了 [DiPlay](https://github.com/shihabal3amri/DiPlay) 与 [WinPlay](https://github.com/Roylyl/WinPlay)（两者均为 GPL-3.0 系），因此同样采用 GPL-3.0。分发二进制时请一并附带许可证文本与源码获取方式。
+| 现象 | 检查方向 |
+| --- | --- |
+| macOS 没有设备 | 系统蓝牙权限、是否配对、IOBluetooth 枚举 |
+| 找到设备但连不上 | SDP 是否公布 iAP2 UUID、RFCOMM channel 是否可用 |
+| Identification 被拒绝 | 使用 `--probe -v` 检查识别消息 |
+| Authentication 失败 | 检查合法 MFi 身份文件与证书链 |
+| 收到订阅但定位不变 | 检查 `0xFFFA`、NMEA、iOS 多源定位融合；不保证定位覆盖 |
+| Actions 成功但 Releases 无 DMG | 查看是否为普通分支构建；核对 Release 事件、发布 Job 和资产列表 |
 
-[Linux Do 社区](https://linux.do/) 
+## 许可与致谢
+
+本项目遵循 [GPL-3.0](LICENSE)，实现思路参考 [DiPlay](https://github.com/shihabal3amri/DiPlay) 和 [WinPlay](https://github.com/Roylyl/WinPlay)。分发二进制时须遵守 GPL-3.0 的许可证与源码提供义务。仅在自有设备上用于协议研究与合规测试；不要将定位伪造用于欺诈或违反服务条款的场景。
+
+[Linux Do 社区](https://linux.do/)

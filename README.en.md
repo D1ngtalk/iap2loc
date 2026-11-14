@@ -2,149 +2,186 @@
 
 [中文](README.md) · **English**
 
-An iAP2 location client for Windows. It pushes location updates (NMEA) to iOS devices over iAP2 and ships a local web console for picking points and tuning parameters.
+A cross-platform iAP2 location client for **Windows 10/11 x64** and
+**macOS Apple Silicon (arm64) / Intel (x64)**.
 
-iOS fuses the result with its own sources: the accessory is only one input, not a system-level override.
+It sends location information (NMEA) to iOS devices over the iAP2
+protocol and provides a local web console for device management,
+map-based location selection, and parameter configuration. iOS combines
+multiple location sources, so a successful connection does not guarantee
+that the system location will change.
+
+## Downloads and system requirements
+
+Download the appropriate version from
+[Releases](https://github.com/D1ngtalk/iap2loc/releases), or [build from
+source](#building-from-source-and-ci).
+
+| Platform            | Build artifact                    | Requirements                                                    |
+|---------------------|-----------------------------------|-----------------------------------------------------------------|
+| Windows 10/11 x64   | `iap2loc-windows-x64.exe`         | Paired Bluetooth device, MFi credentials                        |
+| Windows 10/11 x64   | `iap2loc-windows-x64-bundled.exe` | Paired Bluetooth device (no separate credential files required) |
+| macOS Apple Silicon | `iap2loc-macos-arm64.dmg`         | macOS Bluetooth permission, paired device, MFi credentials      |
+| macOS Intel         | `iap2loc-macos-x64.dmg`           | macOS Bluetooth permission, paired device, MFi credentials      |
+
+Release builds are self-contained and generally do not require a
+separate .NET installation. Building from source requires the **.NET 10
+SDK**. The macOS build is ad-hoc signed and **has not been notarized
+with an Apple Developer ID**. Only approve it through System Settings if
+you trust the build source. Do not disable Gatekeeper globally.
 
 ## Quick start
 
-> The console UI is currently in Chinese; the UI labels quoted below are translations.
+1.  **Install**: On Windows, run the downloaded EXE. On macOS, open the
+    DMG for your architecture, drag the app into Applications, then
+    allow Bluetooth access under **System Settings → Privacy & Security
+    → Bluetooth**.
 
-### 1. Prepare
+2.  **Pair**: Pair your iPhone in the operating system's Bluetooth
+    settings first. On macOS, the app uses IOBluetooth to discover
+    paired devices, query SDP, and attempt to establish an RFCOMM
+    connection. Seeing a device in the list does not mean that it
+    exposes an iAP2 service.
 
-- Download `iap2loc-windows-x64.exe` from [Releases](https://github.com/D1ngtalk/iap2loc/releases), or [build](#build) your own. Either way you need a working MFi accessory identity (`identity.pk8` + `certificate.p7b`) placed in `./identity`; this repository contains no authentication material.
-- Pair the iOS device in Windows Settings → Bluetooth & devices.
+3.  **Open the console**: Launch the application and visit
+    <http://127.0.0.1:8737/>.
 
-### 2. Connect
+4.  **Connect a device**: Add your iOS device under **Devices** and make
+    sure its connection status changes to **Authenticated**.
 
-1. Double-click the downloaded executable; the console opens in your browser at <http://localhost:8737/>
-2. Pick the paired iOS device from the **Device** dropdown (only Apple devices are listed by default; tick "show all" to see everything)
-3. Click **Add** and confirm three key log lines:
-   - `0x1D02 IdentificationAccepted` — identification accepted
-   - `0xAA05 AuthenticationSucceeded` — authentication passed, so the identity material is valid
-   - `0xFFFA StartLocationInformation` — iOS has subscribed to location updates
+5.  **Set coordinates**: Select a location on the map, adjust parameters
+    such as accuracy, altitude, and update interval, then click **Apply
+    Changes**. Multiple devices can use the same target coordinates.
+    Whether the location ultimately changes depends on iOS location
+    fusion.
 
-### 3. Pick a point
+6.  **Switch the location source on the device**:
 
-1. Click the target on the map, or fill it from a favorite / your own location
-2. Adjust accuracy, altitude and update interval as needed; random offset and accuracy range live under **Advanced**
-3. Click **Apply**; the next update (1 s by default) uses it, no reconnection needed
-4. Several devices can run at once and share the same target
+    1.  **Turn off Wi-Fi, cellular data, and Location Services.** Wait
+        ten seconds, then turn Location Services back on. Do not turn
+        Wi-Fi on yet.
+    2.  **Open Maps** and check whether the location source has switched
+        to iAP2. The blue dot should appear at the configured
+        coordinates rather than the device's actual location.
+    3.  **Turn Wi-Fi on, but keep cellular data off.** Once the location
+        stabilizes, turn cellular data back on.
 
-### 4. Switch the location source on iOS
-
-If the position does not change, go through this sequence:
-
-1. **Turn off Wi-Fi, cellular data and Location Services**, wait ten seconds, then turn Location Services back on — leave Wi-Fi off.
-2. **Open Maps** and confirm the source has switched to iAP2 (the blue dot should sit on the chosen coordinate instead of the device's real position).
-3. **Turn Wi-Fi on, but keep cellular data off**; turn cellular data back on once the position is stable.
-
-The reason: Wi-Fi and cell positioning, plus cached fixes from other Apple devices, all take part in the system fusion. Remove them first, and the accessory's report becomes the current source.
+    > **If the location still cannot be changed after repeating these
+    > steps:** In some cases, cached data from other location sources
+    > may cause Maps to display an approximate-area circle and the
+    > message "Unable to determine your location." If this happens, turn
+    > off Wi-Fi, cellular data, and Location Services, then restart the
+    > device. After restarting, connect over Bluetooth and set the
+    > coordinates again, then resume from step 2 above.
 
 ## Features
 
-- **Map picking**: switch between OSM (WGS-84) and AMap (GCJ-02) tiles with automatic coordinate conversion, so the China datum offset does not show up
-- **Live target changes**: click the map, press Apply, and the next report uses it — no reconnect, no re-authentication
-- **Multiple devices**: one session per iOS device, all following the same target; each can be stopped or removed from the web console
-- **Device discovery**: enumerates paired Bluetooth devices and ranks Apple ones first, using name, device class and OUI
-- **Randomization**: optional coordinate offset and accuracy jitter, rolled once when the target is set and then kept fixed
-- **Favorites**: saved to `%LOCALAPPDATA%\iap2loc\favorites.json`
+- **Cross-platform transport**: Windows Bluetooth; macOS
+  IOBluetooth/SDP/RFCOMM.
+- **Web console**: Device list, connection sessions, map-based location
+  selection, real-time adjustments, and multi-device management.
+- **Maps and coordinates**: OpenStreetMap WGS-84 / Amap GCJ-02,
+  automatic coordinate conversion, and saved locations.
+- **NMEA**: GGA and RMC sentences; positioning quality (0–8), satellite
+  count (0–99), speed, bearing, altitude, and accuracy.
+- **Reporting interval**: 250 ms by default, with a minimum of 10 ms.
+  The subscription interval specified by the device in `0xFFFA` takes
+  precedence over `--rate`.
+- **Accessory identity**: `iap2loc.json` stores settings and saved
+  locations. By default, the accessory name and serial number are
+  rotated at each launch. The Bluetooth address can be managed through
+  the configuration. Manual changes to the identity and address are also
+  supported. Note that this does not modify the real Bluetooth hardware
+  address or guarantee that iOS location fusion will be bypassed.
+- **Large-distance changes**: For movements exceeding 100 m, the program
+  can include speed and bearing information in transition frames. This
+  does not guarantee that iOS will accept the location.
 
-## Requirements
+## Command line
 
-| Item | Requirement |
-|---|---|
-| OS | Windows 10 / 11 x64 |
-| Runtime | Release builds are self-contained, no .NET needed; building requires the .NET 10 SDK |
-| Bluetooth | With the Bluetooth link, the iOS device must be paired in Windows first |
-| Identity | A working MFi accessory identity (`identity.pk8` + `certificate.p7b`); the repository ships none |
+Run the executable from its directory on Windows, or from the macOS
+app's `Contents/MacOS` directory. Use the actual filename for your
+build:
 
-## Build
-
-```bash
-dotnet build -c Release
-
-# single-file, self-contained, produces dist/iap2loc.exe
-dotnet publish -c Release -r win-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+``` bash
+./iap2loc devices
+./iap2loc serve --port 8737
+./iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --lat 31.2304 --lon 121.4737
+./iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe -v
+./iap2loc run --transport tcp --host 127.0.0.1 --port 12345 --lat 31.2304 --lon 121.4737
+./iap2loc inspect-identity --identity ./identity
 ```
 
-## Usage
+| Option                                        | Purpose                                                                            |
+|-----------------------------------------------|------------------------------------------------------------------------------------|
+| `--lat`, `--lon`                              | Target latitude and longitude                                                      |
+| `--alt`, `--speed`, `--bearing`, `--accuracy` | Additional NMEA fields                                                             |
+| `--quality`, `--satellites`                   | GGA quality and satellite count; defaults to 1 / 8                                 |
+| `--rate`                                      | Default interval in milliseconds; the device's subscription value takes precedence |
+| `--identity`                                  | MFi identity directory                                                             |
+| `--config`                                    | Configuration file path (defaults to `iap2loc.json` in the application directory)  |
+| `--fixed-identity`, `--fixed-adapter`         | Disable the corresponding identity or address rotation behavior                    |
+| `--probe`, `-v`                               | Identification probe only; verbose protocol logs                                   |
 
-The GUI walkthrough is in [Quick start](#quick-start). Update interval, fix quality, satellite count, MFi key, transport and randomization all live under **Advanced**, together with **rotate accessory identity** (the identity is already rotated on every start). When the iPhone specifies a period while subscribing (`0x8001` / `0x8002` inside `0xFFFA`), that period wins; `--rate` only applies when the device asks for nothing. To start only the console:
+`--sentences` has been removed. Only GGA/RMC are currently sent.
 
-```bash
-iap2loc serve --port 8737
-```
+## MFi identity and security
 
-### Command line
+Completing MFi authentication requires accessory identity credentials
+**obtained legitimately**. This repository does not include private keys
+or certificates:
 
-```bash
-iap2loc devices                       # list paired Bluetooth devices
-iap2loc serve --port 8737             # start the console only
-
-iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF \
-  --lat 31.2304 --lon 121.4737
-
-iap2loc run --transport tcp --host 127.0.0.1 --port 12345 \
-  --lat 31.2304 --lon 121.4737
-
-iap2loc run --transport bt --mac AA:BB:CC:DD:EE:FF --probe   # stop after identification
-```
-
-Common options:
-
-| Option | Meaning |
-|---|---|
-| `--lat` / `--lon` | Target coordinate, default 31.2304, 121.4737 |
-| `--alt` / `--speed` / `--bearing` / `--accuracy` | Extra NMEA fields |
-| `--quality` | GGA fix quality 0–8, default 1 (GPS fix) |
-| `--satellites` | GGA satellites used, 0–99, default 8 |
-| `--rate` | Update interval in ms, default 250, minimum 10 |
-| `--identity` | MFi key directory (`identity.pk8` + `certificate.p7b`); without it the link and identification still work, but authentication will not |
-| `--config` | Config file, default `iap2loc.json` next to the executable |
-| `--fixed-identity` | Do not rotate the accessory identity (a new serial is generated on every start by default) |
-| `--fixed-adapter` | Report the real adapter address (a random one is generated once and then kept by default) |
-| `--name` / `--model` / `--serial` … | Override identity fields for this run |
-| `--probe` | Exit on `0x1D02` / `0x1D03` |
-| `-v` | Protocol-level logging |
-
-Only GGA + RMC are sent (that is all iOS subscribes to in `0xFFFA`); `--sentences` is gone.
-
-## Config and favorites
-
-`iap2loc.json` next to the executable holds the accessory identity, the randomization switches and the saved points:
-
-- A new `serial` and `name` on every start, so iOS sees a new accessory. iOS remembers the last location per accessory, which otherwise blocks long-distance changes.
-- The Bluetooth address is generated on first start and then kept, so the pairing stays the same.
-- Favorites live in the same file.
-- `--config` points elsewhere; `--fixed-identity` / `--fixed-adapter` turn the randomization off for a run; deleting the file restores the default identity.
-
-## MFi key
-
-```bash
-iap2loc inspect-identity --identity ./identity   # inspect the certificate chain and extensions
-iap2loc run ... --identity ./identity
-```
-
-The directory must contain:
-
-```
+``` text
 identity/
-├─ identity.pk8        PKCS#8 DER, P-256 private key
-└─ certificate.p7b     accessory certificate chain (sent as-is)
+├── identity.pk8       # PKCS#8 DER P-256 private key
+└── certificate.p7b    # Accessory certificate chain
 ```
 
-`--identity` may point anywhere; without it the link and identification still work, only authentication fails. The repository contains no identity material.
+Use `--identity ./identity` to specify the directory. Without an
+identity, you can troubleshoot device discovery, the connection link,
+and identification, but MFi authentication cannot be completed. **Do not
+commit keys, certificates, secrets in configuration files, or logs
+containing real device information to GitHub.**
 
-## Notes
+## Building from source and CI
 
-- **Read the log first**: `--probe` tells you whether identification is accepted without touching authentication; `-v` prints the full protocol exchange.
-- **Long jumps**: the frame that moves more than 100 m reports 250 m/s (about 900 km/h) and the bearing towards the target, then falls back to stationary, so the receiver never sees "stationary + teleport".
-- **Legal**: use this only on devices you own, for protocol research and privacy testing. Using a spoofed location for attendance, ride-hailing, insurance mileage or games may constitute fraud or breach of contract; an MFi identity of unknown origin may violate Apple's terms. No authentication material is provided here, and you are responsible for the legitimacy of whatever identity you supply.
+``` bash
+dotnet build Iap2Loc.csproj -c Release
+# Windows self-contained single-file build
+dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+# macOS: run the repository script on a Mac with the corresponding architecture
+bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
+# For an Intel Mac, use x64 instead
+```
 
-## License
+macOS packaging also requires Xcode Command Line Tools (`clang`,
+`xcrun`). Automation workflows: [macOS](.github/workflows/macos.yml).
+The workflow uses separate ARM64 and Intel runners to build, mount, and
+smoke-test the DMGs. Regular pushes and pull requests only upload
+Actions Artifacts. The two DMGs are attached to an existing Release only
+when a release is published or a workflow is manually rerun for a
+specified tag. Refer to the result of the specific workflow run for
+details.
 
-Released under the GNU General Public License v3.0; see [LICENSE](LICENSE).
+## Troubleshooting
 
-The implementation draws on ideas from [DiPlay](https://github.com/shihabal3amri/DiPlay) and [WinPlay](https://github.com/Roylyl/WinPlay) (both GPL-3.0 family), hence the same license here. When distributing binaries, include the license text and a way to obtain the source.
+| Symptom                                                   | What to check                                                                                           |
+|-----------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| No devices appear on macOS                                | System Bluetooth permission, pairing status, and IOBluetooth enumeration                                |
+| Device is found but cannot connect                        | Whether SDP advertises the iAP2 UUID and whether the RFCOMM channel is available                        |
+| Identification is rejected                                | Use `--probe -v` to inspect identification messages                                                     |
+| Authentication fails                                      | Check that the MFi identity files and certificate chain are valid and legitimately obtained             |
+| Subscription is received but the location does not change | Check `0xFFFA`, NMEA data, and iOS multi-source location fusion; location override is not guaranteed    |
+| Actions succeeds but no DMG appears in Releases           | Check whether this was a regular branch build; verify the Release event, publishing job, and asset list |
+
+## License and acknowledgements
+
+This project is licensed under [GPL-3.0](LICENSE). Its implementation is
+informed by [DiPlay](https://github.com/shihabal3amri/DiPlay) and
+[WinPlay](https://github.com/Roylyl/WinPlay). When distributing
+binaries, you must comply with the GPL-3.0 license and its source-code
+availability requirements. Use this project only on devices you own for
+protocol research and compliance testing. Do not use location spoofing
+for fraud or in ways that violate service terms.
+
+[Linux Do Community](https://linux.do/)
