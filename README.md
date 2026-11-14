@@ -8,11 +8,11 @@
 
 ## 下载与系统要求
 
-从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 获取对应版本；如果没有可下载的 Release，请查看 [Actions](https://github.com/D1ngtalk/iap2loc/actions) 的构建产物（Artifacts 可能要求登录且有保留期限）。
-
+从 [Releases](https://github.com/D1ngtalk/iap2loc/releases) 获取对应版本；或 [从源码构建](#源码构建与-ci)
 | 平台 | 构建产物 | 要求 |
 | --- | --- | --- |
 | Windows 10/11 x64 | `iap2loc-windows-x64.exe` | 已配对的蓝牙设备 |
+| Windows 10/11 x64 | `iap2loc-windows-x64-bundled.exe` | 已配对的蓝牙设备 (无需密钥文件) |
 | macOS Apple Silicon | `iap2loc-macos-arm64.dmg` | macOS 蓝牙权限、已配对设备 |
 | macOS Intel | `iap2loc-macos-x64.dmg` | macOS 蓝牙权限、已配对设备 |
 
@@ -25,6 +25,11 @@
 3. **打开控制台**：启动应用，访问 <http://127.0.0.1:8737/>；选择设备并添加。必要时勾选「显示全部」。
 4. **查看日志**：`0x1D02 IdentificationAccepted` 表示识别接受；`0xAA05 AuthenticationSucceeded` 表示认证成功；`0xFFFA StartLocationInformation` 表示订阅定位。**这三个状态不能互相替代。**
 5. **设置坐标**：在地图上选择位置，调整精度、高度、周期等，点击「应用修改」。多设备可使用同一目标坐标。定位最终是否变化取决于 iOS 的定位融合。
+6. **在 iOS 上切换定位源**:  
+  Ⅰ. **关闭 Wi-Fi、数据流量和定位服务**，等待十秒后重新打开定位服务——此时不要打开 Wi-Fi。  
+  Ⅱ. **打开「地图」**，确认定位源已经切换到 iAP2（蓝点应落在设定的坐标上，而不是设备实际所在位置）。  
+  Ⅲ. **打开 Wi-Fi，但不要打开数据流量**，等定位稳定后再打开数据流量。  
+  > **重复以上步骤多此仍无法修改定位**：在某些情况下，受到其他定位来源缓存的影响，可能地图会显示一个大致范围圈，并提示 "无法确定你的位置"。此时请关闭Wi-Fi、数据流量和定位服务并重启设备，重启后连接上蓝牙设置坐标后再从步骤Ⅱ开始。
 
 ## 功能
 
