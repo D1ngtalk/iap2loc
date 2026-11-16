@@ -7,21 +7,28 @@ internal sealed class SessionManager : IDisposable
 {
     private readonly object _gate = new();
     private readonly List<RunSession> _sessions = new();
+    private readonly AppConfig _config;
     private int _nextId;
 
-    public SessionManager(double latitude, double longitude)
+    public SessionManager(double latitude, double longitude, AppConfig config)
     {
         Target = new LocationTarget(latitude, longitude);
+        _config = config;
     }
 
     public LocationTarget Target { get; }
+
+    /// <summary>Identity handed to new sessions. Existing sessions keep the one they started with.</summary>
+    public AccessoryProfile Profile => _config.EffectiveProfile;
+
+    public AccessoryProfile RotateIdentity(byte[]? localAdapter) => _config.RotateIdentity(localAdapter);
 
     public RunSession Add(RunRequest request)
     {
         RunSession session;
         lock (_gate)
         {
-            session = new RunSession($"s{++_nextId}", request, Target);
+            session = new RunSession($"s{++_nextId}", request with { Profile = Profile }, Target);
             _sessions.Add(session);
         }
 
@@ -97,6 +104,14 @@ internal sealed class SessionManager : IDisposable
         return new
         {
             warning = IdentitySource.Warning,
+            identity = new
+            {
+                name = Profile.Name,
+                model = Profile.Model,
+                serial = Profile.Serial,
+                adapter = Profile.AdapterAddress,
+                path = _config.FilePath,
+            },
             target = Target.Snapshot(),
             sessions = sessions.Select(session => new
             {

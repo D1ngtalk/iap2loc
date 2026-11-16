@@ -3,22 +3,10 @@ using System.Text;
 
 namespace Iap2Loc.Protocol;
 
-/// <summary>Which NMEA sentences go into the 0xFFFB payload.</summary>
-[Flags]
-internal enum NmeaSentences
-{
-    None = 0,
-    Gga = 1,
-    Rmc = 2,
-    Gsa = 4,
-    Gsv = 8,
-    Default = Gga | Rmc,
-}
-
 /// <summary>
 /// Encodes a fix as the NMEA stream the iPhone expects inside a 0xFFFB LocationInformation
-/// message. GGA carries the fix itself, RMC the recommended minimum, GSA the 2D/3D mode and DOP,
-/// GSV the satellites in view. Field layout follows the proven DiPlay/LIVI encoder.
+/// message. Only GGA and RMC are ever sent: 0xFFFA can only subscribe to those two, and iOS
+/// never asks for GSA or GSV.
 /// </summary>
 internal static class Nmea
 {
@@ -31,8 +19,9 @@ internal static class Nmea
         double? bearingDegrees,
         double? speedMetersPerSecond,
         double? accuracyMeters,
-        DateTime utc,
-        NmeaSentences sentences = NmeaSentences.Default)
+        int quality,
+        int satellites,
+        DateTime utc)
     {
         if (!double.IsFinite(latitude) || latitude is < -90 or > 90)
         {
@@ -42,11 +31,6 @@ internal static class Nmea
         if (!double.IsFinite(longitude) || longitude is < -180 or > 180)
         {
             throw new ArgumentOutOfRangeException(nameof(longitude), "longitude must be within -180..180");
-        }
-
-        if ((sentences & (NmeaSentences.Gga | NmeaSentences.Rmc)) == 0)
-        {
-            sentences |= NmeaSentences.Default;
         }
 
         var time = utc.ToString("HHmmss", CultureInfo.InvariantCulture) + ".00";
@@ -63,46 +47,26 @@ internal static class Nmea
 
         var payload = new StringBuilder();
 
-        if (sentences.HasFlag(NmeaSentences.Gga))
-        {
-            var gga = "GPGGA," + time + "," + latitudeText + "," + latitudeHemisphere + "," +
-                      longitudeText + "," + longitudeHemisphere + ",1,08," +
-                      hdop.ToString("0.0", CultureInfo.InvariantCulture) + "," + altitude + ",M,0.0,M,,";
-            Append(payload, gga);
-        }
+        // Field 6 is the fix quality (0..8) and field 7 the satellites used (0..99).
+        var gga = "GPGGA," + time + "," + latitudeText + "," + latitudeHemisphere + "," +
+                  longitudeText + "," + longitudeHemisphere + "," +
+                  Math.Clamp(quality, 0, 8).ToString(CultureInfo.InvariantCulture) + "," +
+                  Math.Clamp(satellites, 0, 99).ToString("00", CultureInfo.InvariantCulture) + "," +
+                  hdop.ToString("0.0", CultureInfo.InvariantCulture) + "," + altitude + ",M,0.0,M,,";
+        Append(payload, gga);
 
-        if (sentences.HasFlag(NmeaSentences.Gsa))
-        {
-            // mode A (auto 2D/3D), fix type 3 (3D), eight satellites in the solution, then PDOP/HDOP/VDOP.
-            var gsa = "GPGSA,A,3,01,02,03,04,05,06,07,08,,,,," +
-                      (hdop * 1.6).ToString("0.0", CultureInfo.InvariantCulture) + "," +
-                      hdop.ToString("0.0", CultureInfo.InvariantCulture) + "," +
-                      (hdop * 1.2).ToString("0.0", CultureInfo.InvariantCulture);
-            Append(payload, gsa);
-        }
+        var speed = speedMetersPerSecond is { } metersPerSecond && double.IsFinite(metersPerSecond) && metersPerSecond >= 0
+            ? (metersPerSecond * KnotsPerMeterPerSecond).ToString("0.00", CultureInfo.InvariantCulture)
+            : "0.00";
 
-        if (sentences.HasFlag(NmeaSentences.Gsv))
-        {
-            // Two sentences for eight satellites in view, plausible elevations/azimuths/SNRs.
-            Append(payload, "GPGSV,2,1,08,01,40,083,46,02,17,308,41,03,45,120,45,04,30,200,44");
-            Append(payload, "GPGSV,2,2,08,05,25,150,43,06,60,300,42,07,15,090,40,08,70,240,41");
-        }
+        // An unknown course stays empty: 0.00 would claim the vehicle heads north.
+        var course = bearingDegrees is { } bearing && double.IsFinite(bearing)
+            ? bearing.ToString("0.00", CultureInfo.InvariantCulture)
+            : string.Empty;
 
-        if (sentences.HasFlag(NmeaSentences.Rmc))
-        {
-            var speed = speedMetersPerSecond is { } metersPerSecond && double.IsFinite(metersPerSecond) && metersPerSecond >= 0
-                ? (metersPerSecond * KnotsPerMeterPerSecond).ToString("0.00", CultureInfo.InvariantCulture)
-                : "0.00";
-
-            // An unknown course stays empty: 0.00 would claim the vehicle heads north.
-            var course = bearingDegrees is { } bearing && double.IsFinite(bearing)
-                ? bearing.ToString("0.00", CultureInfo.InvariantCulture)
-                : string.Empty;
-
-            var rmc = "GPRMC," + time + ",A," + latitudeText + "," + latitudeHemisphere + "," +
-                      longitudeText + "," + longitudeHemisphere + "," + speed + "," + course + "," + date + ",,";
-            Append(payload, rmc);
-        }
+        var rmc = "GPRMC," + time + ",A," + latitudeText + "," + latitudeHemisphere + "," +
+                  longitudeText + "," + longitudeHemisphere + "," + speed + "," + course + "," + date + ",,";
+        Append(payload, rmc);
 
         return payload.ToString();
     }
@@ -141,28 +105,5 @@ internal static class Nmea
         }
 
         return value.ToString("X2", CultureInfo.InvariantCulture);
-    }
-
-    public static NmeaSentences ParseSentences(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return NmeaSentences.Default;
-        }
-
-        var result = NmeaSentences.None;
-        foreach (var token in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            result |= token.ToLowerInvariant() switch
-            {
-                "gga" => NmeaSentences.Gga,
-                "rmc" => NmeaSentences.Rmc,
-                "gsa" => NmeaSentences.Gsa,
-                "gsv" => NmeaSentences.Gsv,
-                _ => throw new ArgumentException($"unknown NMEA sentence '{token}', use gga,rmc,gsa,gsv"),
-            };
-        }
-
-        return result == NmeaSentences.None ? NmeaSentences.Default : result;
     }
 }

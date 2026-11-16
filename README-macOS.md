@@ -20,6 +20,8 @@
 4. 与 Mac 登录同一 Apple 账户的 iPhone 会通过 iCloud 自动与 Mac 配对，系统设置 > 蓝牙中无需也无法手动连接。设备列表中带有 iAP2 服务记录的设备标记为 Apple 设备。连接时优先使用 macOS 缓存的 iAP2 SDP 记录，没有缓存时才实时查询（最长 8 秒，期间保持 iPhone 解锁并靠近 Mac）。
 5. 在 Web 控制台选择设备并添加。关注 SDP、RFCOMM、iAP2 Identification、MFi Authentication 日志。
 
+配置与收藏保存在 `~/Library/Application Support/iap2loc/iap2loc.json`。
+
 终端高级命令，进入 app 的 Contents/MacOS 目录：
 
     ./iap2loc devices
