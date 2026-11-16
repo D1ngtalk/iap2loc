@@ -14,6 +14,15 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        // IOBluetooth delivers its callbacks on the main thread's runloop, so on macOS the
+        // main thread runs that loop and the application runs on a worker thread.
+        return OperatingSystem.IsMacOS()
+            ? MacBtRfcommTransport.RunWithMainLoop(() => RunApplication(args))
+            : RunApplication(args);
+    }
+
+    private static int RunApplication(string[] args)
+    {
         Console.OutputEncoding = Encoding.UTF8;
         var launchedByDoubleClick = args.Length == 0;
 

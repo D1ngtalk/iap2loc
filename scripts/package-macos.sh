@@ -45,7 +45,6 @@ xcrun clang -fobjc-arc -fPIC -O2 -dynamiclib \
 dotnet publish Iap2Loc.csproj -c Release -r "$RID" \
     --self-contained true \
     -p:PublishSingleFile=true \
-    -p:EnableCompressionInSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:DebugType=None -p:DebugSymbols=false \
     -o "$WORK/publish"

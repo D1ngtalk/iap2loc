@@ -53,6 +53,47 @@ internal sealed class MacBtRfcommTransport : ITransport
         }
     }
 
+    /// <summary>
+    /// Runs <paramref name="application"/> on a worker thread while the calling (main)
+    /// thread runs the native runloop that delivers IOBluetooth callbacks. Returns the
+    /// application's exit code once it finishes.
+    /// </summary>
+    public static int RunWithMainLoop(Func<int> application)
+    {
+        try
+        {
+            Native.MainLoopRunning();
+        }
+        catch (DllNotFoundException)
+        {
+            // Without the native bridge there is no IOBluetooth; TCP and the console still work.
+            return application();
+        }
+
+        int exitCode = 1;
+        var worker = new Thread(() =>
+        {
+            try
+            {
+                exitCode = application();
+            }
+            finally
+            {
+                Native.StopMainLoop();
+            }
+        })
+        {
+            Name = "iap2loc-main",
+        };
+
+        worker.Start();
+        // Returns -1 immediately when not on the process main thread; bluetooth connects
+        // then report the missing runloop.
+        Native.RunMainLoop();
+        worker.Join();
+        return exitCode;
+    }
+
     public static List<BluetoothDevice> GetDevices()
     {
         var bytes = new byte[65536];
@@ -70,7 +111,7 @@ internal sealed class MacBtRfcommTransport : ITransport
                 var normalized = d.Address!.Replace('-', ':').ToUpperInvariant();
                 return new BluetoothDevice(
                     normalized, d.Name ?? "(未命名)", d.Connected, true, d.Paired,
-                    BluetoothDevices.IsLikelyApple(d.Name ?? "", normalized));
+                    d.Iap2 || BluetoothDevices.IsLikelyApple(d.Name ?? "", normalized));
             })
             .OrderByDescending(d => d.LikelyApple)
             .ThenByDescending(d => d.Connected)
@@ -131,7 +172,8 @@ internal sealed class MacBtRfcommTransport : ITransport
         _socket.Dispose();
     }
 
-    private sealed record MacPairedDevice(string? Address, string? Name, bool Paired, bool Connected);
+    /// <param name="Iap2">The device has a cached SDP record for the iAP2 service.</param>
+    private sealed record MacPairedDevice(string? Address, string? Name, bool Paired, bool Connected, bool Iap2);
 
     private static class Native
     {
@@ -147,6 +189,18 @@ internal sealed class MacBtRfcommTransport : ITransport
         [DllImport("iap2macbt", EntryPoint = "iap2mac_local_address",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int LocalAddress([Out] byte[] buffer, int capacity);
+
+        [DllImport("iap2macbt", EntryPoint = "iap2mac_run_main_loop",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RunMainLoop();
+
+        [DllImport("iap2macbt", EntryPoint = "iap2mac_stop_main_loop",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern void StopMainLoop();
+
+        [DllImport("iap2macbt", EntryPoint = "iap2mac_main_loop_running",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int MainLoopRunning();
 
         [DllImport("libSystem.B.dylib", EntryPoint = "close", CallingConvention = CallingConvention.Cdecl)]
         public static extern int CloseFd(int fd);

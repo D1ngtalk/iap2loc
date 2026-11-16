@@ -197,7 +197,7 @@ internal static class BluetoothDevices
         if (OperatingSystem.IsWindows())
             Log.Info("先在 Windows 蓝牙设置里配对 iPhone，再用 --mac 指定地址");
         else
-            Log.Info("请先在 macOS 系统设置 > 蓝牙中配对目标 iPhone。");
+            Log.Info("与本机配对（含 iCloud 同步配对）且带有 iAP2 服务记录的设备标记为 apple?，用 --mac 指定地址");
     }
 
     public static string FormatAddress(ulong address) =>

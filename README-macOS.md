@@ -7,6 +7,7 @@
 
 - Apple Silicon (arm64) / Intel (x64) 分别提供自包含 .app，不需要另外安装 .NET。
 - 使用原生 IOBluetooth.framework 读取已配对的经典蓝牙设备与本机蓝牙适配器地址。
+- IOBluetooth 回调在主线程 runloop 上送达：程序主线程运行 runloop，业务逻辑运行在工作线程。
 - 配对设备的 SDP 查询，寻找 iAP2 服务 UUID 00000000-deca-fade-deca-deafdecacafe。
 - 根据服务记录获取 RFCOMM channel ID，打开 RFCOMM，按 MTU 分块双向收发字节。
 - .NET 原有 iAP2 协议层、TCP 模式、Web 控制台等保留。
@@ -16,7 +17,7 @@
 1. 打开 DMG，将符合自己 CPU 的 .app 拖到 Applications。
 2. 双击安装的 .app，允许 macOS 蓝牙权限（系统设置 > 隐私与安全性 > 蓝牙）。
 3. Web 控制台在 http://127.0.0.1:8737/ 。默认仅监听本机。
-4. 先在 macOS 系统设置 > 蓝牙中配对 iPhone。Mac 所允许看到的设备不一定公布 iAP2 RFCOMM 服务。
+4. 与 Mac 登录同一 Apple 账户的 iPhone 会通过 iCloud 自动与 Mac 配对，系统设置 > 蓝牙中无需也无法手动连接。设备列表中带有 iAP2 服务记录的设备标记为 Apple 设备。连接时优先使用 macOS 缓存的 iAP2 SDP 记录，没有缓存时才实时查询（最长 8 秒，期间保持 iPhone 解锁并靠近 Mac）。
 5. 在 Web 控制台选择设备并添加。关注 SDP、RFCOMM、iAP2 Identification、MFi Authentication 日志。
 
 终端高级命令，进入 app 的 Contents/MacOS 目录：

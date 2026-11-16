@@ -15,6 +15,7 @@
 #include <time.h>
 
 #define MAX_RX_BUFFER (4 * 1024 * 1024)
+#define SDP_TIMEOUT_SECONDS 8.0
 static const uint8_t IAP2_UUID[16] = {
     0x00, 0x00, 0x00, 0x00, 0xDE, 0xCA, 0xFA, 0xDE,
     0xDE, 0xCA, 0xDE, 0xAF, 0xDE, 0xCA, 0xCA, 0xFE
@@ -52,21 +53,20 @@ static double monotonic_seconds(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
-static void pump_runloop(void) {
-    @autoreleasepool {
-        BOOL handled = [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                             beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.015]];
-        if (!handled) usleep(10000); // Do not spin if no runloop sources are registered.
-    }
-}
+// IOBluetooth delivers delegate callbacks on the main thread's runloop. The host
+// process runs iap2mac_run_main_loop() on its main thread; every IOBluetooth call is
+// dispatched onto the main queue, and the per-connection worker thread only waits on
+// callback state and moves bytes between the RFCOMM channel and the socketpair.
+static volatile int g_main_loop_running = 0;
+static volatile int g_main_loop_stop = 0;
 
 @interface Iap2BtEvents : NSObject <IOBluetoothRFCOMMChannelDelegate>
-@property(nonatomic, assign) BOOL sdpDone;
-@property(nonatomic, assign) IOReturn sdpResult;
-@property(nonatomic, assign) BOOL openDone;
-@property(nonatomic, assign) IOReturn openResult;
-@property(nonatomic, assign) BOOL closed;
-@property(nonatomic, strong) NSMutableData *pendingReceive;
+@property(atomic, assign) BOOL sdpDone;
+@property(atomic, assign) IOReturn sdpResult;
+@property(atomic, assign) BOOL openDone;
+@property(atomic, assign) IOReturn openResult;
+@property(atomic, assign) BOOL closed;
+@property(nonatomic, strong) NSMutableData *pendingReceive; // guarded by @synchronized(self)
 @end
 
 @implementation Iap2BtEvents
@@ -77,102 +77,129 @@ static void pump_runloop(void) {
 }
 - (void)sdpQueryComplete:(IOBluetoothDevice *)device status:(IOReturn)status {
     (void)device;
-    _sdpResult = status;
-    _sdpDone = YES;
+    self.sdpResult = status;
+    self.sdpDone = YES;
 }
 - (void)rfcommChannelOpenComplete:(IOBluetoothRFCOMMChannel *)channel status:(IOReturn)status {
     (void)channel;
-    _openResult = status;
-    _openDone = YES;
+    self.openResult = status;
+    self.openDone = YES;
 }
 - (void)rfcommChannelData:(IOBluetoothRFCOMMChannel *)channel data:(void *)bytes length:(size_t)length {
     (void)channel;
     if (length == 0) return;
-    if ([_pendingReceive length] + length > MAX_RX_BUFFER) {
-        _closed = YES; // Never grow without a bound if a consumer stops reading.
-        return;
+    @synchronized(self) {
+        if ([_pendingReceive length] + length > MAX_RX_BUFFER) {
+            self.closed = YES; // Never grow without a bound if a consumer stops reading.
+            return;
+        }
+        [_pendingReceive appendBytes:bytes length:length];
     }
-    [_pendingReceive appendBytes:bytes length:length];
 }
 - (void)rfcommChannelClosed:(IOBluetoothRFCOMMChannel *)channel {
     (void)channel;
-    _closed = YES;
+    self.closed = YES;
 }
 @end
 
-static BOOL wait_for_flag(BTContext *ctx, Iap2BtEvents *events,
-                          SEL completionSelector, double deadline) {
+// Runs block on the main thread so that IOBluetooth is only ever used from one thread.
+// Without a running main loop (no host cooperation) the block runs on the caller.
+static void on_main(dispatch_block_t block) {
+    if (pthread_main_np() || !g_main_loop_running) block();
+    else dispatch_sync(dispatch_get_main_queue(), block);
+}
+
+static BOOL wait_until(BTContext *ctx, BOOL (^finished)(void), double deadline) {
     while (!should_abort(ctx) && monotonic_seconds() < deadline) {
-        BOOL finished = completionSelector == @selector(sdpQueryComplete:status:)
-            ? events.sdpDone : events.openDone;
-        if (finished) return YES;
-        pump_runloop();
+        if (finished()) return YES;
+        usleep(10000);
     }
-    return NO;
+    return finished();
 }
 
 static void *bt_thread(void *opaque) {
     BTContext *ctx = (BTContext *)opaque;
     @autoreleasepool {
-        IOBluetoothDevice *device = nil;
-        IOBluetoothRFCOMMChannel *channel = nil;
-        IOBluetoothSDPUUID *uuid = nil;
-        IOBluetoothSDPServiceRecord *record = nil;
-        Iap2BtEvents *events = [[Iap2BtEvents alloc] init];
+        __block IOBluetoothDevice *device = nil;
+        __block IOBluetoothRFCOMMChannel *channel = nil;
+        __block IOBluetoothSDPServiceRecord *record = nil;
+        __block BOOL paired = NO;
+        __block IOReturn status = kIOReturnError;
+        __block BluetoothRFCOMMChannelID channelId = 0;
+        __block BOOL isOpen = NO;
+        __block int mtu = 0;
+        __block IOBluetoothSDPUUID *uuid = [IOBluetoothSDPUUID uuidWithBytes:IAP2_UUID length:16];
+        __block Iap2BtEvents *events = [[Iap2BtEvents alloc] init];
         double deadline = monotonic_seconds() + (double)ctx->timeoutMs / 1000.0;
         BOOL connected = NO;
-        IOReturn status = kIOReturnError;
+        __block NSString *address = [NSString stringWithUTF8String:ctx->address];
 
-        device = [IOBluetoothDevice deviceWithAddressString:
-                    [NSString stringWithUTF8String:ctx->address]];
+        on_main(^{
+            device = [IOBluetoothDevice deviceWithAddressString:address];
+            paired = device ? [device isPaired] : NO;
+        });
         if (!device) {
             set_error(ctx, "蓝牙地址不存在或设备无法被系统识别", 1);
             goto finish_connect;
         }
-        if (![device isPaired]) {
-            set_error(ctx, "请先在 macOS 蓝牙设置中配对目标设备", 2);
+        if (!paired) {
+            set_error(ctx, "目标设备未与本机配对", 2);
             goto finish_connect;
         }
-
-        uuid = [IOBluetoothSDPUUID uuidWithBytes:IAP2_UUID length:16];
         if (!uuid) {
             set_error(ctx, "无法构建 iAP2 服务 UUID", 3);
             goto finish_connect;
         }
-        status = [device performSDPQuery:events uuids:@[uuid]];
-        if (status != kIOReturnSuccess) {
-            set_error(ctx, "iAP2 SDP 服务查询未能启动", status);
-            goto finish_connect;
-        }
-        if (!wait_for_flag(ctx, events, @selector(sdpQueryComplete:status:), deadline)) {
-            set_error(ctx, "iAP2 SDP 查询超时或被取消", 4);
-            goto finish_connect;
-        }
-        if (events.sdpResult != kIOReturnSuccess) {
-            set_error(ctx, "目标设备拒绝 SDP 服务查询", events.sdpResult);
-            goto finish_connect;
-        }
-        record = [device getServiceRecordForUUID:uuid];
+
+        // macOS caches SDP records per device (including records synced with iCloud
+        // pairing). The cached iAP2 record is used directly; a live SDP query runs only
+        // when no cached record exists. An unanswered live query keeps the baseband
+        // link busy and blocks the following RFCOMM open, so it is bounded by
+        // SDP_TIMEOUT_SECONDS.
+        on_main(^{ record = [device getServiceRecordForUUID:uuid]; });
         if (!record) {
-            set_error(ctx, "设备 SDP 列表中没有 iAP2 RFCOMM 服务 UUID，无法连接", 5);
+            on_main(^{ status = [device performSDPQuery:events uuids:@[uuid]]; });
+            if (status == kIOReturnSuccess) {
+                double sdpDeadline = MIN(deadline, monotonic_seconds() + SDP_TIMEOUT_SECONDS);
+                wait_until(ctx, ^BOOL { return events.sdpDone; }, sdpDeadline);
+                if (should_abort(ctx)) {
+                    set_error(ctx, "iAP2 SDP 查询被取消", 4);
+                    goto finish_connect;
+                }
+            }
+            on_main(^{ record = [device getServiceRecordForUUID:uuid]; });
+        }
+        if (!record) {
+            if (status != kIOReturnSuccess) {
+                set_error(ctx, "iAP2 SDP 服务查询未能启动，且没有缓存的 iAP2 服务记录", status);
+            } else if (!events.sdpDone) {
+                set_error(ctx, "iAP2 SDP 查询超时，且没有缓存的 iAP2 服务记录（请解锁 iPhone 并靠近 Mac）", 4);
+            } else {
+                set_error(ctx, "设备 SDP 列表中没有 iAP2 RFCOMM 服务 UUID，无法连接", events.sdpResult);
+            }
             goto finish_connect;
         }
-        BluetoothRFCOMMChannelID channelId = 0;
-        status = [record getRFCOMMChannelID:&channelId];
+
+        on_main(^{ status = [record getRFCOMMChannelID:&channelId]; });
         if (status != kIOReturnSuccess || channelId == 0) {
             set_error(ctx, "iAP2 SDP 服务没有可用 RFCOMM channel ID", status);
             goto finish_connect;
         }
-        status = [device openRFCOMMChannelAsync:&channel withChannelID:channelId delegate:events];
+        on_main(^{
+            IOBluetoothRFCOMMChannel *opened = nil;
+            status = [device openRFCOMMChannelAsync:&opened withChannelID:channelId delegate:events];
+            channel = opened;
+        });
         if (status != kIOReturnSuccess) {
             set_error(ctx, "无法启动 RFCOMM 通道连接", status);
             goto finish_connect;
         }
-        if (!wait_for_flag(ctx, events, @selector(rfcommChannelOpenComplete:status:), deadline)) {
+        if (!wait_until(ctx, ^BOOL { return events.openDone; }, deadline)) {
             set_error(ctx, "RFCOMM 连接超时或被取消", 6);
             goto finish_connect;
         }
-        if (events.openResult != kIOReturnSuccess || ![channel isOpen]) {
+        on_main(^{ isOpen = [channel isOpen]; });
+        if (events.openResult != kIOReturnSuccess || !isOpen) {
             set_error(ctx, "RFCOMM 连接被拒绝", events.openResult);
             goto finish_connect;
         }
@@ -188,28 +215,30 @@ finish_connect:
         pthread_mutex_unlock(&ctx->mutex);
 
         if (connected) {
-            // Worker owns RFCOMM callbacks, IOBluetooth runloop, and native socket.
-            // The managed client owns the other socketpair end.
-            int mtu = (int)[channel getMTU];
+            // The worker owns the native socketpair end; the managed client owns the other.
+            on_main(^{ mtu = (int)[channel getMTU]; });
             if (mtu < 1) mtu = 127;
             if (mtu > 65535) mtu = 65535;
             uint8_t buffer[4096];
             while (!events.closed && !should_abort(ctx)) {
-                pump_runloop();
-                if (events.closed) break;
+                BOOL idle = YES;
 
-                // Bluetooth -> managed Socket: drain queued callback data.
-                NSUInteger rxCount = [events.pendingReceive length];
-                if (rxCount > 0) {
-                    ssize_t sent = send(ctx->fdNative, [events.pendingReceive bytes],
-                                        MIN(rxCount, (NSUInteger)65536), 0);
-                    if (sent > 0) {
-                        [events.pendingReceive replaceBytesInRange:NSMakeRange(0, (NSUInteger)sent)
-                                                         withBytes:NULL length:0];
-                    } else if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                        break;
+                // Bluetooth -> managed Socket: drain data queued by the main-thread callback.
+                @synchronized(events) {
+                    NSUInteger rxCount = [events.pendingReceive length];
+                    if (rxCount > 0) {
+                        idle = NO;
+                        ssize_t sent = send(ctx->fdNative, [events.pendingReceive bytes],
+                                            MIN(rxCount, (NSUInteger)65536), 0);
+                        if (sent > 0) {
+                            [events.pendingReceive replaceBytesInRange:NSMakeRange(0, (NSUInteger)sent)
+                                                             withBytes:NULL length:0];
+                        } else if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                            events.closed = YES;
+                        }
                     }
                 }
+                if (events.closed) break;
 
                 // Managed Socket -> Bluetooth: chunks must not exceed RFCOMM MTU.
                 ssize_t got = recv(ctx->fdNative, buffer, sizeof(buffer), MSG_DONTWAIT);
@@ -217,23 +246,31 @@ finish_connect:
                 if (got < 0) {
                     if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) break;
                 } else {
+                    idle = NO;
                     size_t offset = 0;
                     while (offset < (size_t)got) {
-                        int count = (int)MIN((size_t)mtu, (size_t)got - offset);
-                        status = [channel writeSync:buffer + offset length:(UInt16)count];
+                        UInt16 count = (UInt16)MIN((size_t)mtu, (size_t)got - offset);
+                        uint8_t *chunk = buffer + offset;
+                        on_main(^{ status = [channel writeSync:chunk length:count]; });
                         if (status != kIOReturnSuccess) {
                             events.closed = YES;
                             break;
                         }
-                        offset += (size_t)count;
+                        offset += count;
                     }
                 }
+                if (idle) usleep(2000);
             }
         }
 
-        if (channel) {
-            [channel setDelegate:nil];
-            [channel closeChannel];
+        if (channel || device) {
+            on_main(^{
+                if (channel) {
+                    [channel setDelegate:nil];
+                    [channel closeChannel];
+                }
+                if (device && !connected) [device closeConnection];
+            });
         }
         shutdown(ctx->fdNative, SHUT_RDWR);
         close(ctx->fdNative);
@@ -245,6 +282,32 @@ finish_connect:
         free(ctx);
     }
     return NULL;
+}
+
+// Runs the main-thread runloop that IOBluetooth delivers callbacks on. Must be called
+// on the process main thread; returns -1 otherwise. Returns after iap2mac_stop_main_loop.
+__attribute__((visibility("default")))
+int iap2mac_run_main_loop(void) {
+    if (!pthread_main_np()) return -1;
+    g_main_loop_running = 1;
+    while (!g_main_loop_stop) {
+        @autoreleasepool {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, false);
+        }
+    }
+    g_main_loop_running = 0;
+    return 0;
+}
+
+__attribute__((visibility("default")))
+int iap2mac_main_loop_running(void) {
+    return g_main_loop_running;
+}
+
+__attribute__((visibility("default")))
+void iap2mac_stop_main_loop(void) {
+    g_main_loop_stop = 1;
+    CFRunLoopStop(CFRunLoopGetMain());
 }
 
 // Copies UTF-8 output and returns byte count, or -1 on error/insufficient capacity.
@@ -261,17 +324,26 @@ static int copy_utf8(NSString *value, char *buffer, int capacity) {
 __attribute__((visibility("default")))
 int iap2mac_paired_devices(char *buffer, int capacity) {
     @autoreleasepool {
-        NSMutableArray *list = [NSMutableArray array];
-        for (IOBluetoothDevice *device in [IOBluetoothDevice pairedDevices] ?: @[]) {
-            NSString *address = device.addressString ?: @"";
-            NSString *name = device.nameOrAddress ?: address;
-            [list addObject:@{
-                @"address": address,
-                @"name": name,
-                @"paired": @([device isPaired]),
-                @"connected": @([device isConnected])
-            }];
-        }
+        __block NSMutableArray *list = [NSMutableArray array];
+        on_main(^{
+            NSMutableSet *seen = [NSMutableSet set];
+            IOBluetoothSDPUUID *uuid = [IOBluetoothSDPUUID uuidWithBytes:IAP2_UUID length:16];
+            // pairedDevices may list the same device more than once; one entry per address.
+            for (IOBluetoothDevice *device in [IOBluetoothDevice pairedDevices] ?: @[]) {
+                NSString *address = device.addressString ?: @"";
+                if ([address length] == 0 || [seen containsObject:address]) continue;
+                [seen addObject:address];
+                NSString *name = device.nameOrAddress ?: address;
+                BOOL iap2 = uuid && [device getServiceRecordForUUID:uuid] != nil;
+                [list addObject:@{
+                    @"address": address,
+                    @"name": name,
+                    @"paired": @([device isPaired]),
+                    @"connected": @([device isConnected]),
+                    @"iap2": @(iap2)
+                }];
+            }
+        });
         NSData *json = [NSJSONSerialization dataWithJSONObject:list options:0 error:nil];
         if (!json || !buffer || capacity < (int)[json length] + 1) return -1;
         memcpy(buffer, [json bytes], [json length]);
@@ -283,8 +355,10 @@ int iap2mac_paired_devices(char *buffer, int capacity) {
 __attribute__((visibility("default")))
 int iap2mac_local_address(char *buffer, int capacity) {
     @autoreleasepool {
-        IOBluetoothHostController *controller = [IOBluetoothHostController defaultController];
-        NSString *address = [controller addressAsString];
+        __block NSString *address = nil;
+        on_main(^{
+            address = [[IOBluetoothHostController defaultController] addressAsString];
+        });
         return copy_utf8(address ?: @"", buffer, capacity);
     }
 }
@@ -294,6 +368,10 @@ int iap2mac_local_address(char *buffer, int capacity) {
 __attribute__((visibility("default")))
 int iap2mac_open(const char *address, int timeoutMs, char *error, int capacity) {
     if (error && capacity > 0) error[0] = 0;
+    if (!g_main_loop_running) {
+        copy_utf8(@"主线程 runloop 未运行，IOBluetooth 回调无法送达", error, capacity);
+        return -1;
+    }
     if (!address || strlen(address) >= 31) {
         copy_utf8(@"蓝牙地址格式错误", error, capacity);
         return -1;
