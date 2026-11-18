@@ -62,10 +62,11 @@ internal sealed class LocationTarget
 
     public LocationTarget(double latitude, double longitude)
     {
-        _latitude = latitude;
-        _longitude = longitude;
-        _resolvedLatitude = latitude;
-        _resolvedLongitude = longitude;
+        var initial = Geo.Normalize(new GeoPoint(latitude, longitude));
+        _latitude = initial.Latitude;
+        _longitude = initial.Longitude;
+        _resolvedLatitude = initial.Latitude;
+        _resolvedLongitude = initial.Longitude;
         Resolve();
     }
 
@@ -124,8 +125,15 @@ internal sealed class LocationTarget
                 }
             }
 
-            if (update.Latitude is { } latitude) _latitude = latitude;
-            if (update.Longitude is { } longitude) _longitude = longitude;
+            if (update.Latitude is { } latitude && double.IsFinite(latitude))
+            {
+                _latitude = Geo.NormalizeLatitude(latitude);
+            }
+
+            if (update.Longitude is { } longitude && double.IsFinite(longitude))
+            {
+                _longitude = Geo.NormalizeLongitude(longitude);
+            }
             if (update.Altitude is { } altitude) _altitudeMeters = altitude;
             if (update.Accuracy is { } accuracy) _accuracyMeters = accuracy;
             if (update.Speed is { } pointSpeed) _speedMetersPerSecond = pointSpeed;
@@ -271,7 +279,7 @@ internal sealed class LocationTarget
             // Uniform inside a disc, so the offset is not biased towards the centre.
             var angle = Random.Shared.NextDouble() * Math.PI * 2;
             var distance = Math.Sqrt(Random.Shared.NextDouble()) * _jitterMeters;
-            var shifted = Geo.Offset(new GeoPoint(_latitude, _longitude), distance, angle);
+            var shifted = Geo.Normalize(Geo.Offset(new GeoPoint(_latitude, _longitude), distance, angle));
             _resolvedLatitude = shifted.Latitude;
             _resolvedLongitude = shifted.Longitude;
         }

@@ -326,7 +326,7 @@ function addOnMap(lat, lon) {
   const [wLat, wLon] = S.datum === 'gcj' ? gcj2wgs(lat, lon) : [lat, lon];
   if (S.mode === 'path') {
     S.route.forEach(point => { point.time = null; });
-    S.route.push({ lat: +wLat.toFixed(6), lon: +wLon.toFixed(6), alt: null, time: null });
+    S.route.push({ lat: +clampLat(wLat).toFixed(6), lon: +wrapLon(wLon).toFixed(6), alt: null, time: null });
     renderRoute();
     markDirty();
     return;
@@ -335,12 +335,24 @@ function addOnMap(lat, lon) {
 }
 
 function applyPicked(lat, lon) {
-  S.target.lat = +lat.toFixed(6);
-  S.target.lon = +lon.toFixed(6);
+  const nextLat = +clampLat(lat).toFixed(6);
+  const nextLon = +wrapLon(lon).toFixed(6);
+  const wrapped = Math.abs(nextLon - lon) > 1e-6;
+
+  S.target.lat = nextLat;
+  S.target.lon = nextLon;
   renderTarget(true);
   readInputs();
   markDirty();
+
+  if (wrapped && map) {
+    const [gLat, gLon] = S.datum === 'gcj' ? wgs2gcj(nextLat, nextLon) : [nextLat, nextLon];
+    map.setView([gLat, gLon], map.getZoom());
+  }
 }
+
+function clampLat(lat) { return Math.max(-90, Math.min(90, lat)); }
+function wrapLon(lon) { return ((lon + 180) % 360 + 360) % 360 - 180; }
 
 function renderTarget(updateInputs) {
   const [gLat, gLon] = wgs2gcj(S.target.lat, S.target.lon);
@@ -425,7 +437,7 @@ function renderRoute() {
     node.on('dragend', () => {
       const position = node.getLatLng();
       const [lat, lon] = S.datum === 'gcj' ? gcj2wgs(position.lat, position.lng) : [position.lat, position.lng];
-      S.route[index] = { ...S.route[index], lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+      S.route[index] = { ...S.route[index], lat: +clampLat(lat).toFixed(6), lon: +wrapLon(lon).toFixed(6) };
       renderRoute();
       markDirty();
     });
@@ -557,7 +569,7 @@ function parseGpx(text) {
 
     const last = points[points.length - 1];
     if (last && Math.abs(last.lat - lat) < 1e-7 && Math.abs(last.lon - lon) < 1e-7) return;
-    points.push({ lat: +lat.toFixed(6), lon: +lon.toFixed(6), alt, time });
+    points.push({ lat: +clampLat(lat).toFixed(6), lon: +wrapLon(lon).toFixed(6), alt, time });
   });
 
   if (!points.every(point => point.time != null)) {
@@ -585,8 +597,8 @@ function fitRoute() {
 function readInputs() {
   if (S.mode === 'point') {
     const lat = parseFloat(el('lat').value), lon = parseFloat(el('lon').value);
-    if (Number.isFinite(lat)) S.target.lat = lat;
-    if (Number.isFinite(lon)) S.target.lon = lon;
+    if (Number.isFinite(lat)) S.target.lat = clampLat(lat);
+    if (Number.isFinite(lon)) S.target.lon = wrapLon(lon);
   }
   S.target.accuracy = num('accuracy', 5);
   S.target.alt = num('alt', 10);
@@ -643,7 +655,7 @@ function buildPayload(tolerateEmptyRoute) {
   const mode = S.mode === 'path' && tolerateEmptyRoute && S.route.length < 2 ? 'point' : S.mode;
   return {
     mode,
-    latitude: S.target.lat, longitude: S.target.lon,
+    latitude: clampLat(S.target.lat), longitude: wrapLon(S.target.lon),
     altitude: S.target.alt, accuracy: S.target.accuracy,
     jitterMeters: S.target.jitterMeters,
     jitterAccuracy: S.target.jitterAccuracy, accuracyMin: S.target.accuracyMin, accuracyMax: S.target.accuracyMax,
@@ -652,7 +664,7 @@ function buildPayload(tolerateEmptyRoute) {
     rate: S.rate,
     pathSpeedKmh: S.pathSpeed, pathLoop: S.pathLoop,
     route: mode === 'path'
-      ? S.route.map(point => ({ latitude: point.lat, longitude: point.lon, altitude: point.alt, time: point.time }))
+      ? S.route.map(point => ({ latitude: clampLat(point.lat), longitude: wrapLon(point.lon), altitude: point.alt, time: point.time }))
       : null
   };
 }
@@ -669,6 +681,7 @@ async function applyTarget(options = {}) {
   const result = await postJson('/api/target', buildPayload(options.tolerateEmptyRoute));
   if (result && result.ok) {
     if (result.target) { updateResolved(result.target); renderApplied(result.target); }
+    renderTarget(true);
     markClean();
     return true;
   }
@@ -1002,8 +1015,9 @@ el('favorites').addEventListener('click', async event => {
 
   const row = event.target.closest('.item');
   if (!row) return;
-  S.target.lat = parseFloat(row.dataset.lat);
-  S.target.lon = parseFloat(row.dataset.lon);
+  const favoriteLat = parseFloat(row.dataset.lat), favoriteLon = parseFloat(row.dataset.lon);
+  if (Number.isFinite(favoriteLat)) S.target.lat = clampLat(favoriteLat);
+  if (Number.isFinite(favoriteLon)) S.target.lon = wrapLon(favoriteLon);
   if (row.dataset.alt !== '') { S.target.alt = parseFloat(row.dataset.alt); el('alt').value = S.target.alt; }
   if (row.dataset.accuracy !== '') { S.target.accuracy = parseFloat(row.dataset.accuracy); el('accuracy').value = S.target.accuracy; }
   renderTarget(true);

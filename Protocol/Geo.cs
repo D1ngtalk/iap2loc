@@ -43,4 +43,28 @@ internal static class Geo
                              (MetresPerDegree * Math.Max(0.01, Math.Cos(origin.Latitude * Math.PI / 180)));
         return new GeoPoint(origin.Latitude + deltaLatitude, origin.Longitude + deltaLongitude, origin.Altitude);
     }
+
+    /// <summary>Clamps latitude to the poles; a non-finite value falls back to the equator.</summary>
+    public static double NormalizeLatitude(double latitude) =>
+        double.IsFinite(latitude) ? Math.Clamp(latitude, -90, 90) : 0;
+
+    /// <summary>
+    /// Wraps longitude into -180..180. Map clicks on a wrapped copy of the world land outside that
+    /// range, and NMEA rejects anything beyond it.
+    /// </summary>
+    public static double NormalizeLongitude(double longitude)
+    {
+        if (!double.IsFinite(longitude))
+        {
+            return 0;
+        }
+
+        var wrapped = longitude % 360;
+        if (wrapped > 180) wrapped -= 360;
+        if (wrapped < -180) wrapped += 360;
+        return wrapped;
+    }
+
+    public static GeoPoint Normalize(GeoPoint point) =>
+        new(NormalizeLatitude(point.Latitude), NormalizeLongitude(point.Longitude), point.Altitude);
 }
