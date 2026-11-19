@@ -1,6 +1,6 @@
 # iap2loc
 
-[中文](README.md) · **English**
+[中文](README.md) · **English** · [日本語](README.ja.md)
 
 A cross-platform iOS location changer client for **Windows 10/11 x64** and
 **macOS Apple Silicon (arm64) / Intel (x64)**.

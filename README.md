@@ -1,6 +1,6 @@
 # iap2loc
 
-**中文** · [English](README.en.md)
+**中文** · [English](README.en.md) · [日本語](README.ja.md)
 
 跨平台 iOS 虚拟定位客户端，支持 **Windows 10/11 x64** 与 **macOS Apple Silicon (arm64) / Intel (x64)**。
 
