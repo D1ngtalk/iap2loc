@@ -7,10 +7,14 @@ A cross-platform iOS location changer client for **Windows 10/11 x64** and
 
 It sends location information (NMEA) to iOS devices over the iAP2
 protocol and provides a local web console for device management,
-map-based location picking, and parameter configuration. iOS fuses
-multiple location sources, so a successful connection does not guarantee
-that the system location will change.  
->⚠️ macOS is currently only experimentally supported. Availability is not guaranteed
+map-based location picking, and parameter configuration.
+
+> [!IMPORTANT]  
+> ## Support all versions of iOS 12.X - 27.X
+> Tested and passed on iPhone 6 (iOS 12.5.8), iPhone 11 (iOS 26.6), iPhone 17 (iOS 27.0)
+> > Lower iOS versions may also be available but have not been verified
+> ### ⚠️ For iOS 26 and above: 
+> Starting with iOS 26, Apple has modified the location fusion algorithm and location data caching. On devices running iOS 26 or later, you must [refresh the device's location cache](#switch-the-location-source-on-the-device) for the adjusted location settings to take effect. The "Route Mode" may become unavailable when Wi-Fi or cellular data is enabled.
 
 ## Downloads and system requirements
 
@@ -51,25 +55,25 @@ trust the build source, and do not disable Gatekeeper globally.
     mode](#path-mode). Adjust the parameters and click **Apply Changes**.
     Whether the device's location ultimately changes depends on iOS
     location fusion.
-
-6.  **Switch the location source on the device**:
-
-    1.  **Turn off Wi-Fi, cellular data, and Location Services.** Wait
-        ten seconds, then turn Location Services back on — do not turn
-        Wi-Fi on yet.
-    2.  **Open Maps** and confirm the location source has switched to
-        iAP2. The blue dot should land on the configured coordinates
-        rather than the device's actual location.
-    3.  **Turn Wi-Fi on, but keep cellular data off.** Wait for the
-        location to stabilize, then turn cellular data back on.
-
-    > **If the location still cannot be changed after repeating these
-    > steps:** In some cases, cached data from other location sources
-    > can make Maps show an approximate-area circle and the message
-    > "Unable to determine your location." If so, turn off Wi-Fi,
-    > cellular data, and Location Services and restart the device. After
-    > restarting, connect over Bluetooth and set the coordinates again,
-    > then resume from step 2.
+> [!IMPORTANT]  
+>### Switch the location source on the device:
+>
+>    1.  **Turn off Wi-Fi, cellular data, and Location Services.** Wait
+>        ten seconds, then turn Location Services back on — do not turn
+>        Wi-Fi on yet.
+>    2.  **Open Maps** and confirm the location source has switched to
+>        iAP2. The blue dot should land on the configured coordinates
+>        rather than the device's actual location.
+>    3.  **Turn Wi-Fi on, but keep cellular data off.** Wait for the
+>        location to stabilize, then turn cellular data back on.
+>
+> **If the location still cannot be changed after repeating these
+> steps:** In some cases, cached data from other location sources
+> can make Maps show an approximate-area circle and the message
+> "Unable to determine your location." If so, **turn off Wi-Fi,
+> cellular data, and Location Services** and **restart the device**. After
+> restarting, connect over Bluetooth and set the coordinates again,
+> then resume from step 2.
 
 ## Features
 
