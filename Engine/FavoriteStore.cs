@@ -8,7 +8,22 @@ internal sealed record Favorite(
     double? Altitude,
     double? Accuracy);
 
-/// <summary>Saved points, backed by the shared <see cref="AppConfig"/> file.</summary>
+internal sealed record SavedRoutePoint(
+    double Latitude,
+    double Longitude,
+    double? Altitude = null,
+    double? Time = null);
+
+internal sealed record SavedRoute(
+    string Id,
+    string Name,
+    double LengthMeters,
+    double SpeedKmh,
+    string LoopMode,
+    bool AutoClose,
+    List<SavedRoutePoint> Points);
+
+/// <summary>Saved points and routes, backed by the shared <see cref="AppConfig"/> file.</summary>
 internal sealed class FavoriteStore
 {
     private readonly AppConfig _config;
@@ -19,8 +34,21 @@ internal sealed class FavoriteStore
 
     public IReadOnlyList<Favorite> All => _config.FavoritesSnapshot();
 
+    public IReadOnlyList<SavedRoute> AllRoutes => _config.SavedRoutesSnapshot();
+
     public Favorite Add(string? name, double latitude, double longitude, double? altitude, double? accuracy) =>
         _config.AddFavorite(name, latitude, longitude, altitude, accuracy);
 
     public bool Remove(string id) => _config.RemoveFavorite(id);
+
+    public SavedRoute AddRoute(
+        string? name,
+        double lengthMeters,
+        double speedKmh,
+        string loopMode,
+        bool autoClose,
+        IReadOnlyList<SavedRoutePoint> points) =>
+        _config.AddSavedRoute(name, lengthMeters, speedKmh, loopMode, autoClose, points);
+
+    public bool RemoveRoute(string id) => _config.RemoveSavedRoute(id);
 }

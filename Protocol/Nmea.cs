@@ -33,7 +33,7 @@ internal static class Nmea
             throw new ArgumentOutOfRangeException(nameof(longitude), "longitude must be within -180..180");
         }
 
-        var time = utc.ToString("HHmmss", CultureInfo.InvariantCulture) + ".00";
+        var time = utc.ToString("HHmmss.ff", CultureInfo.InvariantCulture);
         var date = utc.ToString("ddMMyy", CultureInfo.InvariantCulture);
         var (latitudeText, latitudeHemisphere) = Coordinate(latitude, latitude: true);
         var (longitudeText, longitudeHemisphere) = Coordinate(longitude, latitude: false);
@@ -81,14 +81,14 @@ internal static class Nmea
         var absolute = Math.Abs(value);
         var degrees = (int)absolute;
         var minutes = (absolute - degrees) * 60.0;
-        if (minutes >= 60.0 - 0.00005)
+        if (minutes >= 60.0 - 0.000005)
         {
             degrees += 1;
             minutes = 0.0;
         }
 
         var degreeText = degrees.ToString(latitude ? "D2" : "D3", CultureInfo.InvariantCulture);
-        var minuteText = minutes.ToString("00.0000", CultureInfo.InvariantCulture);
+        var minuteText = minutes.ToString("00.00000", CultureInfo.InvariantCulture);
         var hemisphere = latitude
             ? value >= 0 ? "N" : "S"
             : value >= 0 ? "E" : "W";

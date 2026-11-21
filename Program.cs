@@ -419,8 +419,8 @@ internal static class Program
             运行选项:
               --lat / --lon        目标坐标（默认 31.2304, 121.4737）
               --alt --speed --bearing --accuracy    NMEA 附加字段
-              --quality            GGA 定位质量 0-8（默认 1）
-              --satellites         GGA 卫星数 0-99（默认 8）
+              --quality            GGA 定位质量 0-8（默认 4，RTK 固定）
+              --satellites         GGA 卫星数 0-99（默认 20）
               --rate               上报周期，毫秒（默认 250，最小 10）
               --identity           identity.pk8 + certificate.p7b 所在目录（默认 ./identity）
               --config             配置文件（默认 iap2loc.json，位于程序目录）

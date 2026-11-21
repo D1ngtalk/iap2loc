@@ -32,6 +32,8 @@ internal sealed class AppConfig
 
     public List<Favorite> Favorites { get; set; } = new();
 
+    public List<SavedRoute> SavedRoutes { get; set; } = new();
+
     /// <summary>Runtime switch for --fixed-identity; never written to the file.</summary>
     [JsonIgnore]
     public bool RotateIdentityOnStart { get; set; } = true;
@@ -79,6 +81,7 @@ internal sealed class AppConfig
             loaded.FilePath = config.FilePath;
             loaded.Accessory = (loaded.Accessory ?? AccessoryProfile.Default).Sanitize();
             loaded.Favorites ??= new List<Favorite>();
+            loaded.SavedRoutes ??= new List<SavedRoute>();
             return loaded;
         }
         catch (Exception ex)
@@ -167,6 +170,62 @@ internal sealed class AppConfig
         lock (_gate)
         {
             var removed = Favorites.RemoveAll(item => item.Id == id) > 0;
+            if (removed)
+            {
+                SaveLocked();
+            }
+
+            return removed;
+        }
+    }
+
+    public IReadOnlyList<SavedRoute> SavedRoutesSnapshot()
+    {
+        lock (_gate)
+        {
+            return SavedRoutes.ToArray();
+        }
+    }
+
+    public SavedRoute AddSavedRoute(
+        string? name,
+        double lengthMeters,
+        double speedKmh,
+        string loopMode,
+        bool autoClose,
+        IReadOnlyList<SavedRoutePoint> points)
+    {
+        var label = string.IsNullOrWhiteSpace(name)
+            ? $"路径 {points.Count} 点 ({lengthMeters / 1000.0:F2} km)"
+            : name.Trim();
+        var saved = new SavedRoute(
+            Guid.NewGuid().ToString("N")[..8],
+            label,
+            Math.Round(Math.Max(0, lengthMeters), 1),
+            Math.Clamp(speedKmh, 0.5, 180),
+            string.IsNullOrWhiteSpace(loopMode) ? "loop" : loopMode,
+            autoClose,
+            points.Take(5000).ToList());
+
+        lock (_gate)
+        {
+            SavedRoutes.Insert(0, saved);
+            if (SavedRoutes.Count > 50)
+            {
+                SavedRoutes.RemoveRange(50, SavedRoutes.Count - 50);
+            }
+
+            SaveLocked();
+        }
+
+        return saved;
+    }
+
+    public bool RemoveSavedRoute(string id)
+    {
+        lock (_gate)
+        {
+            var removed = SavedRoutes.RemoveAll(item => item.Id == id) > 0;
             if (removed)
             {
                 SaveLocked();

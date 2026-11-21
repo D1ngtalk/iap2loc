@@ -125,6 +125,14 @@ internal sealed class WebServer : IDisposable
                         RespondJson(stream, ApplyTarget(body));
                         return;
 
+                    case "/api/route":
+                        RespondJson(stream, GetCurrentRoute());
+                        return;
+
+                    case "/api/path/control" when method == "POST":
+                        RespondJson(stream, ControlPath(body));
+                        return;
+
                     case "/api/sessions" when method == "POST":
                         RespondJson(stream, StartSession(body));
                         return;
@@ -152,6 +160,18 @@ internal sealed class WebServer : IDisposable
 
                     case "/api/favorites/remove" when method == "POST":
                         RespondJson(stream, RemoveFavorite(body));
+                        return;
+
+                    case "/api/routes" when method == "POST":
+                        RespondJson(stream, AddSavedRoute(body));
+                        return;
+
+                    case "/api/routes":
+                        RespondJson(stream, _favorites.AllRoutes);
+                        return;
+
+                    case "/api/routes/remove" when method == "POST":
+                        RespondJson(stream, RemoveSavedRoute(body));
                         return;
 
                     case "/api/log":
@@ -188,6 +208,80 @@ internal sealed class WebServer : IDisposable
         }
 
         _manager.ApplyTarget(payload.ToUpdate(), payload.Rate);
+        return new { ok = true, target = _manager.Target.Snapshot() };
+    }
+
+    private object GetCurrentRoute()
+    {
+        var route = _manager.Target.GetRouteSnapshot();
+        return new
+        {
+            signature = route.Signature,
+            inputSignature = route.InputSignature,
+            autoClose = route.AutoClose,
+            isClosed = route.IsClosed,
+            autoClosed = route.AutoClosed,
+            closingGapMeters = route.ClosingGapMeters,
+            points = route.Vertices.Select(vertex => new
+            {
+                lat = vertex.Point.Latitude,
+                lon = vertex.Point.Longitude,
+                alt = vertex.Point.Altitude,
+                time = vertex.TimeSeconds is { } sec ? sec * 1000.0 : (double?)null,
+            }).ToArray(),
+        };
+    }
+
+    private object ControlPath(string body)
+    {
+        var payload = Deserialize<PathControlPayload>(body);
+        if (payload is null)
+        {
+            return new { ok = false, error = "请求格式错误" };
+        }
+
+        bool? paused = null;
+        bool? restart = null;
+        double? seekProgress = null;
+
+        switch (payload.Action?.Trim().ToLowerInvariant())
+        {
+            case "pause":
+                paused = true;
+                break;
+            case "resume" or "play":
+                paused = false;
+                break;
+            case "toggle":
+                paused = !_manager.Target.Snapshot().PathPaused;
+                break;
+            case "restart" or "reset":
+                restart = true;
+                break;
+            case "seek":
+                seekProgress = payload.Progress;
+                break;
+        }
+
+        if (payload.Progress is { } progress && seekProgress is null)
+        {
+            seekProgress = progress;
+        }
+
+        var update = new TargetUpdate
+        {
+            PathPaused = paused,
+            PathRestart = restart,
+            PathSeekProgress = seekProgress,
+            PathSpeedMps = payload.PathSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.36, 216) / 3.6 : null,
+            PathLoopMode = ParseLoopMode(payload.PathLoopMode),
+            PathAutoClose = payload.PathAutoClose,
+            PathSpeedJitterPercent = payload.PathSpeedJitterPercent,
+            PathUseGpxTime = payload.PathUseGpxTime,
+            PathTimeScale = payload.PathTimeScale,
+        };
+
+        _manager.ApplyTarget(update, null);
         return new { ok = true, target = _manager.Target.Snapshot() };
     }
 
@@ -263,6 +357,66 @@ internal sealed class WebServer : IDisposable
     {
         var payload = Deserialize<IdPayload>(body);
         return payload?.Id is { } id ? new { ok = _favorites.Remove(id) } : new { ok = false };
+    }
+
+    private object AddSavedRoute(string body)
+    {
+        var payload = Deserialize<SavedRoutePayload>(body);
+        if (payload?.Points is null || payload.Points.Count < 2)
+        {
+            return new { ok = false, error = "路径至少需要两个点" };
+        }
+
+        var points = new List<SavedRoutePoint>(Math.Min(payload.Points.Count, 5000));
+        foreach (var point in payload.Points)
+        {
+            var lat = point.Latitude ?? point.Lat;
+            var lon = point.Longitude ?? point.Lon;
+            if (lat is not { } latitude || lon is not { } longitude ||
+                !double.IsFinite(latitude) || !double.IsFinite(longitude) ||
+                Math.Abs(latitude) > 90 || Math.Abs(longitude) > 180)
+            {
+                continue;
+            }
+
+            var alt = point.Altitude ?? point.Alt;
+            points.Add(new SavedRoutePoint(
+                latitude,
+                longitude,
+                alt is { } a && double.IsFinite(a) ? a : null,
+                point.Time is { } t && double.IsFinite(t) && t > 0 ? t : null));
+
+            if (points.Count >= 5000)
+            {
+                break;
+            }
+        }
+
+        if (points.Count < 2)
+        {
+            return new { ok = false, error = "路径有效点数不足" };
+        }
+
+        var autoClose = payload.AutoClose ?? true;
+        var path = new RoutePath(
+            points.Select(p => new RouteVertex(new GeoPoint(p.Latitude, p.Longitude, p.Altitude), p.Time is { } ms ? ms / 1000.0 : null)),
+            autoClose);
+
+        var saved = _favorites.AddRoute(
+            payload.Name,
+            path.LengthMeters,
+            payload.SpeedKmh ?? 5.0,
+            payload.LoopMode ?? "loop",
+            autoClose,
+            points);
+
+        return new { ok = true, route = saved };
+    }
+
+    private object RemoveSavedRoute(string body)
+    {
+        var payload = Deserialize<IdPayload>(body);
+        return payload?.Id is { } id ? new { ok = _favorites.RemoveRoute(id) } : new { ok = false };
     }
 
     private object LogSince(long since)
@@ -369,7 +523,7 @@ internal sealed class WebServer : IDisposable
         }
 
         var body = string.Empty;
-        if (contentLength > 0)
+        if (contentLength > 0 && contentLength <= 16 * 1024 * 1024)
         {
             var payload = new byte[contentLength];
             var offset = 0;
@@ -399,12 +553,28 @@ internal sealed class WebServer : IDisposable
 
     private sealed record LogEntry(long Id, string Time, string Level, string Text);
 
+    private static PathLoopMode? ParseLoopMode(string? text) => text?.Trim().ToLowerInvariant() switch
+    {
+        "once" or "none" or "single" => PathLoopMode.Once,
+        "loop" or "circle" or "repeat" => PathLoopMode.Loop,
+        "pingpong" or "ping-pong" or "ping_pong" or "roundtrip" or "bounce" => PathLoopMode.PingPong,
+        _ => null,
+    };
+
     private sealed class TargetPayload
     {
         public string? Mode { get; set; }
         public List<RoutePointPayload>? Route { get; set; }
         public double? PathSpeedKmh { get; set; }
         public bool? PathLoop { get; set; }
+        public string? PathLoopMode { get; set; }
+        public bool? PathAutoClose { get; set; }
+        public bool? PathPaused { get; set; }
+        public bool? PathRestart { get; set; }
+        public double? PathSeekProgress { get; set; }
+        public double? PathSpeedJitterPercent { get; set; }
+        public bool? PathUseGpxTime { get; set; }
+        public double? PathTimeScale { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
@@ -426,8 +596,16 @@ internal sealed class WebServer : IDisposable
         {
             Mode = ParseMode(Mode),
             Route = ParseRoute(Route),
-            PathSpeedMps = PathSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.1, 180) / 3.6 : null,
+            PathSpeedMps = PathSpeedKmh is { } kmh ? Math.Clamp(kmh, 0.36, 216) / 3.6 : null,
             PathLoop = PathLoop,
+            PathLoopMode = ParseLoopMode(PathLoopMode),
+            PathAutoClose = PathAutoClose,
+            PathPaused = PathPaused,
+            PathRestart = PathRestart,
+            PathSeekProgress = PathSeekProgress,
+            PathSpeedJitterPercent = PathSpeedJitterPercent,
+            PathUseGpxTime = PathUseGpxTime,
+            PathTimeScale = PathTimeScale,
             Latitude = Latitude,
             Longitude = Longitude,
             Altitude = Altitude,
@@ -463,7 +641,9 @@ internal sealed class WebServer : IDisposable
             var parsed = new List<RouteVertex>(Math.Min(points.Count, LocationTarget.MaxRoutePoints));
             foreach (var point in points)
             {
-                if (point.Latitude is not { } latitude || point.Longitude is not { } longitude)
+                var lat = point.Latitude ?? point.Lat;
+                var lon = point.Longitude ?? point.Lon;
+                if (lat is not { } latitude || lon is not { } longitude)
                 {
                     continue;
                 }
@@ -474,7 +654,8 @@ internal sealed class WebServer : IDisposable
                     continue;
                 }
 
-                var altitude = point.Altitude is { } value && !double.IsNaN(value) ? value : (double?)null;
+                var altRaw = point.Altitude ?? point.Alt;
+                var altitude = altRaw is { } value && !double.IsNaN(value) ? value : (double?)null;
                 var time = point.Time is { } milliseconds && !double.IsNaN(milliseconds) && milliseconds > 0
                     ? milliseconds / 1000.0
                     : (double?)null;
@@ -490,11 +671,35 @@ internal sealed class WebServer : IDisposable
         }
     }
 
+    private sealed class PathControlPayload
+    {
+        public string? Action { get; set; }
+        public double? Progress { get; set; }
+        public double? PathSpeedKmh { get; set; }
+        public string? PathLoopMode { get; set; }
+        public bool? PathAutoClose { get; set; }
+        public double? PathSpeedJitterPercent { get; set; }
+        public bool? PathUseGpxTime { get; set; }
+        public double? PathTimeScale { get; set; }
+    }
+
+    private sealed class SavedRoutePayload
+    {
+        public string? Name { get; set; }
+        public double? SpeedKmh { get; set; }
+        public string? LoopMode { get; set; }
+        public bool? AutoClose { get; set; }
+        public List<RoutePointPayload>? Points { get; set; }
+    }
+
     private sealed class RoutePointPayload
     {
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public double? Altitude { get; set; }
+        public double? Lat { get; set; }
+        public double? Lon { get; set; }
+        public double? Alt { get; set; }
 
         /// <summary>GPX timestamp in epoch milliseconds.</summary>
         public double? Time { get; set; }
