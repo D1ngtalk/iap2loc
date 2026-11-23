@@ -2,7 +2,7 @@
 
 **中文** · [English](README.en.md) · [日本語](README.ja.md)
 
-跨平台 iOS 虚拟定位客户端，支持 **Windows 10/11 x64** 与 **macOS Apple Silicon (arm64) / Intel (x64)**。
+跨平台 iOS 虚拟定位客户端，支持 **Windows 10/11 x64**、**macOS Apple Silicon (arm64) / Intel (x64)** 与 **Android 8.0+**。
 
 通过 iAP2 协议向 iOS 设备下发定位信息（NMEA），并提供本地 Web 控制台管理设备、地图选点和参数。
 
@@ -23,12 +23,13 @@
 | Windows 10/11 x64 | `iap2loc-windows-x64-bundled.exe` | 已配对的蓝牙设备 (无需密钥文件) |
 | macOS Apple Silicon | `iap2loc-macos-arm64.dmg` | macOS 蓝牙权限、已配对设备、MFi密钥 |
 | macOS Intel | `iap2loc-macos-x64.dmg` | macOS 蓝牙权限、已配对设备、MFi密钥 |
+| Android 8.0+ | `iap2loc-android.apk` | 带蓝牙的安卓手机、MFi密钥；App 内有新手引导，详见 [README-Android.md](README-Android.md) |
 
-发布版为自包含程序，通常无需另装 .NET；源码构建需要 **.NET 10 SDK**。macOS 版本为 ad-hoc 签名、**未进行 Apple Developer ID 公证**，仅在信任构建来源时通过系统设置批准打开，不要全局关闭 Gatekeeper。
+桌面发布版为自包含程序，通常无需另装 .NET；源码构建需要 **.NET 10 SDK**。macOS 版本为 ad-hoc 签名、**未进行 Apple Developer ID 公证**，仅在信任构建来源时通过系统设置批准打开，不要全局关闭 Gatekeeper。
 
 ## 快速开始
 
-1. **安装**：Windows 运行下载的 EXE；macOS 打开对应架构 DMG，将 App 拖入 Applications，并在「系统设置 → 隐私与安全性 → 蓝牙」允许访问。
+1. **安装**：Windows 运行下载的 EXE；macOS 打开对应架构 DMG，将 App 拖入 Applications，并在「系统设置 → 隐私与安全性 → 蓝牙」允许访问。安卓安装 APK 后按 App 内的新手引导完成权限、MFi 身份导入、配对与连接测试即可，见 [README-Android.md](README-Android.md)。
 2. **配对蓝牙**：Windows 在操作系统的蓝牙设置中配对 iOS 设备；macOS 可直接连接同 Apple ID 下的 iOS 设备。
 3. **打开控制台**：启动应用，本机访问 <http://127.0.0.1:8737/>。同一局域网内的手机或其他电脑可用 `http://<本机 IP>:8737/` 打开
 4. **连接设备**：在「设备」中添加你的iOS设备，并确保连接状态变为「已认证」
@@ -43,7 +44,8 @@
 
 ## 功能
 
-- **跨平台传输**：Windows 蓝牙、macOS IOBluetooth/SDP/RFCOMM
+- **跨平台传输**：Windows 蓝牙、macOS IOBluetooth/SDP/RFCOMM、Android BluetoothSocket RFCOMM
+- **安卓 App**：同一个 Web 控制台、配置格式与全部功能，外加新手引导、前台服务后台发送与离线地图库，见 [README-Android.md](README-Android.md)
 - **Web 控制台**：设备列表、连接会话、单点 / 路径两种模式、实时调整、多设备管理；窄屏自适应排版，控制台日志可在高级设置里展开到面板底部。
 - **地图与坐标**：OpenStreetMap WGS-84 / 高德 GCJ-02，自动坐标转换；收藏点。
 - **单点模式**：直接在地图上选择坐标点，或填入目标经纬度。
@@ -112,9 +114,11 @@ dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true -p:Pub
 # macOS：在对应架构的 Mac 上使用仓库脚本
 bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
 # Intel Mac 改为 x64
+# Android：需要 JDK 17+ 与 Android SDK，详见 README-Android.md
+cd android && ./gradlew :core:test :app:assembleRelease
 ```
 
-macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。自动化工作流：[macOS](.github/workflows/macos.yml)；它分别使用 ARM64 与 Intel runner 构建、挂载并冒烟测试 DMG。普通 push/PR 仅上传 Actions Artifact；发布或手动重跑指定 tag 时才尝试将两个 DMG 附加到已有 Release。具体以该次工作流结果为准。
+macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。自动化工作流：[macOS](.github/workflows/macos.yml)；它分别使用 ARM64 与 Intel runner 构建、挂载并冒烟测试 DMG。普通 push/PR 仅上传 Actions Artifact；发布或手动重跑指定 tag 时才尝试将两个 DMG 附加到已有 Release。具体以该次工作流结果为准。安卓工作流 [Android](.github/workflows/android.yml) 运行单元测试（含与 C# 实现的逐字节比对和互通测试）、构建 APK 并在模拟器上冒烟测试，发布时附加 `iap2loc-android.apk`。
 
 ## 故障排查
 

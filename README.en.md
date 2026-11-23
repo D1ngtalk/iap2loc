@@ -2,8 +2,8 @@
 
 [中文](README.md) · **English** · [日本語](README.ja.md)
 
-A cross-platform iOS location changer client for **Windows 10/11 x64** and
-**macOS Apple Silicon (arm64) / Intel (x64)**.
+A cross-platform iOS location changer client for **Windows 10/11 x64**,
+**macOS Apple Silicon (arm64) / Intel (x64)** and **Android 8.0+**.
 
 It sends location information (NMEA) to iOS devices over the iAP2
 protocol and provides a local web console for device management,
@@ -28,6 +28,7 @@ source](#building-from-source-and-ci).
 | Windows 10/11 x64   | `iap2loc-windows-x64-bundled.exe` | Paired Bluetooth device (no credential files required)     |
 | macOS Apple Silicon | `iap2loc-macos-arm64.dmg`         | macOS Bluetooth permission, paired device, MFi credentials |
 | macOS Intel         | `iap2loc-macos-x64.dmg`           | macOS Bluetooth permission, paired device, MFi credentials |
+| Android 8.0+        | `iap2loc-android.apk`             | Android phone with Bluetooth, MFi credentials; guided setup in the app, see [README-Android.md](README-Android.md) (Chinese) |
 
 Release builds are self-contained and normally do not require a separate
 .NET installation; building from source requires the **.NET 10 SDK**.
@@ -77,6 +78,11 @@ trust the build source, and do not disable Gatekeeper globally.
 
 ## Features
 
+- **Android app**: The same web console, config format and features in a
+  standalone app, plus a first-run guide (permissions, MFi import, pairing,
+  connection test, iPhone steps), a foreground service for background
+  streaming and a bundled offline map library. See
+  [README-Android.md](README-Android.md).
 - **Cross-platform transport**: Windows Bluetooth; macOS
   IOBluetooth/SDP/RFCOMM.
 - **Web console**: Device list, connection sessions, point and path
@@ -186,6 +192,8 @@ dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true -p:Pub
 # macOS: run the repository script on a Mac with the matching architecture
 bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
 # Use x64 for an Intel Mac
+# Android: needs JDK 17+ and the Android SDK, see README-Android.md
+cd android && ./gradlew :core:test :app:assembleRelease
 ```
 
 macOS packaging also requires Xcode Command Line Tools (`clang`,

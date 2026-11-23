@@ -2,7 +2,7 @@
 
 [中文](README.md) · [English](README.en.md) · **日本語**
 
-**Windows 10/11 x64** と **macOS Apple Silicon (arm64) / Intel (x64)** に
+**Windows 10/11 x64**、**macOS Apple Silicon (arm64) / Intel (x64)**、**Android 8.0+** に
 対応したクロスプラットフォームの iOS 位置情報変更クライアントです。
 
 iAP2 プロトコルを通じて iOS デバイスへ位置情報（NMEA）を送信し、デバイス管理、
@@ -23,6 +23,7 @@ iOS は複数の位置情報ソースを統合するため、接続に成功し�
 | Windows 10/11 x64   | `iap2loc-windows-x64-bundled.exe` | ペアリング済み Bluetooth デバイス（認証情報ファイル不要）  |
 | macOS Apple Silicon | `iap2loc-macos-arm64.dmg`         | macOS の Bluetooth 権限、ペアリング済みデバイス、MFi 認証情報 |
 | macOS Intel         | `iap2loc-macos-x64.dmg`           | macOS の Bluetooth 権限、ペアリング済みデバイス、MFi 認証情報 |
+| Android 8.0+        | `iap2loc-android.apk`             | Bluetooth 搭載の Android スマートフォン、MFi 認証情報。アプリ内に初回ガイドあり（[README-Android.md](README-Android.md)、中国語） |
 
 リリースビルドは自己完結型で、通常は別途 .NET をインストールする必要はありません。
 ソースからのビルドには **.NET 10 SDK** が必要です。macOS ビルドは ad-hoc 署名であり、
@@ -67,6 +68,9 @@ iOS は複数の位置情報ソースを統合するため、接続に成功し�
 
 ## 機能
 
+- **Android アプリ**：同じ Web コンソール・設定形式・全機能を単体アプリで提供し、初回ガイド
+  （権限、MFi インポート、ペアリング、接続テスト、iPhone 側の手順）、バックグラウンド送信用の
+  フォアグラウンドサービス、オフライン地図ライブラリを備えます。[README-Android.md](README-Android.md) を参照。
 - **クロスプラットフォーム転送**：Windows の Bluetooth、macOS の
   IOBluetooth/SDP/RFCOMM。
 - **Web コンソール**：デバイス一覧、接続セッション、単点モードとパスモード、
@@ -164,6 +168,8 @@ dotnet publish Iap2Loc.csproj -c Release -r win-x64 --self-contained true -p:Pub
 # macOS: run the repository script on a Mac with the matching architecture
 bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
 # Use x64 for an Intel Mac
+# Android: needs JDK 17+ and the Android SDK, see README-Android.md
+cd android && ./gradlew :core:test :app:assembleRelease
 ```
 
 macOS のパッケージングには Xcode Command Line Tools（`clang`、`xcrun`）も必要です。
