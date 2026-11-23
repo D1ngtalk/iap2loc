@@ -134,7 +134,9 @@ bash ../scripts/smoke-android.sh app/build/outputs/apk/release/app-release.apk  
 
 ### 签名与 CI
 
-工作流 [`.github/workflows/android.yml`](.github/workflows/android.yml) 会：用临时生成的材料验证 MFi 打包脚本、用 C# 源码重新生成对照数据并运行核心与 App 身份加载单元测试、与 C# 链路层做互通测试、构建并 lint 发布版 APK、在模拟器上安装启动并测试控制台与 JSON API；发布 Release 或手动重跑指定 tag 时把 `iap2loc-android.apk` 附加到 Release。脚本测试与 App 单元测试在 PR 中也会执行，无需真实密钥。
+工作流 [`.github/workflows/android.yml`](.github/workflows/android.yml) 会：用临时生成的材料验证 MFi 打包脚本、用 C# 源码重新生成对照数据并运行核心与 App 身份加载单元测试、与 C# 链路层做互通测试、构建并 lint 发布版 APK、在模拟器上安装启动并测试控制台与 JSON API。推送 `v*` 标签时，[统一发布工作流](.github/workflows/release.yml) 调用此流程，并等待 Windows、macOS 和 Android 全部通过后统一创建和发布 Release；单平台手动发布与重跑仍可向已有 Release 附加 APK。脚本测试与 App 单元测试在 PR 中也会执行，无需真实密钥。标签格式和重跑方法见[自动发布说明](README.md#推标签自动发布)。
+
+所有 Android CI 入口的 `versionCode` 统一按本次 GitHub run 的 `created_at` 计算：距 `2020-01-01 00:00:00 UTC` 的秒数加 `1,000,000`，并检查 `1..2,100,000,000` 的范围。切换工作流不会从小编号重新开始；重跑同一 run 编号保持不变，同秒创建的运行可以同号。`versionName` 为去掉 `v` 的标签，分支测试构建使用开发版名称。本地 Gradle 默认编号仍为 `1`，若需覆盖 CI 安装包，请通过 `-PappVersionCode` 明确指定不小于已安装版本的编号。
 
 发布版必须用项目自己的签名密钥签名（安卓拒绝用不同签名的安装包覆盖升级）。在仓库 Secrets 中配置：
 

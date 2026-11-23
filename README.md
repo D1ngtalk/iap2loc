@@ -118,7 +118,32 @@ bash scripts/package-macos.sh arm64 dist/iap2loc-macos-arm64.dmg
 cd android && ./gradlew :core:test :app:assembleRelease
 ```
 
-macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。自动化工作流：[macOS](.github/workflows/macos.yml)；它分别使用 ARM64 与 Intel runner 构建、挂载并冒烟测试 DMG。普通 push/PR 仅上传 Actions Artifact；发布或手动重跑指定 tag 时才尝试将两个 DMG 附加到已有 Release。具体以该次工作流结果为准。安卓工作流 [Android](.github/workflows/android.yml) 运行单元测试（含与 C# 实现的逐字节比对和互通测试）、构建 APK 并在模拟器上冒烟测试，发布时附加 `iap2loc-android.apk`。
+macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。[macOS 工作流](.github/workflows/macos.yml) 分别使用 ARM64 与 Intel runner 构建、挂载并冒烟测试 DMG。[Android 工作流](.github/workflows/android.yml) 运行单元测试（含与 C# 实现的逐字节比对和互通测试）、构建 APK 并在模拟器上冒烟测试。普通分支 push/PR 生成 Actions Artifact，不创建 Release。
+
+### 推标签自动发布
+
+将代码推送后，对包含新版工作流的提交创建并推送版本标签，例如：
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+上面的版本号仅为示例，发布时使用尚未发布的新版本号。[统一发布工作流](.github/workflows/release.yml) 会并行调用 Windows、macOS 两种架构和 Android 构建；所有测试、lint、冒烟检查通过，并确认 Android 使用正式签名后，才创建草稿 Release。上传并确认七个附件齐全后，草稿自动转为公开版本，更新说明由 GitHub 自动生成。同一标签的发布会串行执行，不被普通分支 CI 取消。
+
+标签遵循带 `v` 前缀的 SemVer，例如 `v0.3.0` 为正式版，`v0.3.0-rc.1`、`v0.3.0-beta.1`、`v0.2.1-android` 为预发布；也支持 `+build.1` 构建元数据。格式错误会在平台构建前失败。
+
+| 平台 | 安装包 | 校验文件 |
+| --- | --- | --- |
+| Windows | `iap2loc-windows-x64.exe` | `iap2loc-windows-x64.exe.sha256` |
+| macOS | `iap2loc-macos-arm64.dmg`、`iap2loc-macos-x64.dmg` | `iap2loc-macos.sha256` |
+| Android | `iap2loc-android.apk` | `iap2loc-android.apk.sha256` |
+
+Android 发布需配置[四项 APK 签名 Secrets](README-Android.md#签名与-ci)；[两项 MFi Secrets](README-Android.md#在-ci-中打包内置-mfi-身份) 可选，决定是否内置 MFi 身份。发布使用仓库自带的 `GITHUB_TOKEN`，无需额外 PAT。配置自检和模拟发布测试在相关 PR 中运行，不使用真实身份或创建真实 Release。
+
+如果环境、签名配置或上传临时失败，可在 Actions 中重跑失败的作业，也可在 **Release all platforms → Run workflow** 中填写已有标签重新构建。上传中断会保留草稿，重跑时补齐附件后发布；已公开且附件齐全时跳过重复发布，已公开但附件缺失时停止并要求人工处理。代码修复应创建新标签，不要移动已发布标签；Artifact 已过期时需重跑全部构建。
+
+现有手动发布 Release 和单平台工作流的手动重跑入口仍保留，用于向已有 Release 上传对应平台附件。自动标签发布由统一工作流直接调用构建，完成后不会再触发一轮重复构建。
 
 ## 故障排查
 
@@ -130,7 +155,7 @@ macOS 打包还需要 Xcode Command Line Tools（`clang`、`xcrun`）。自动�
 | Authentication 失败 | 检查合法 MFi 身份文件与证书链 |
 | 收到订阅但定位不变 | 检查 `0xFFFA`、NMEA、iOS 多源定位融合；不保证定位覆盖 |
 | 局域网打不开控制台 | 防火墙是否放行 8737 端口、两台设备是否在同一网段 |
-| Actions 成功但 Releases 无 DMG | 查看是否为普通分支构建；核对 Release 事件、发布 Job 和资产列表 |
+| Actions 成功但 Releases 无 DMG | 普通分支构建只生成 Artifact；标签发布需全部平台通过，查看 Release all platforms 的发布作业和草稿状态 |
 
 ## 许可与致谢
 

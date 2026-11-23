@@ -13,6 +13,8 @@ on:
       - 'scripts/smoke-android.sh'
       - 'scripts/prepare-android-mfi.py'
       - 'scripts/test_prepare_android_mfi.py'
+      - 'scripts/release.py'
+      - 'scripts/test_release.py'
       - '.github/workflows/android.yml'
   release:
     types: [published]
@@ -22,13 +24,42 @@ on:
         description: '已存在的 tag，仅用于重跑发布'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      artifacts_only:
+        type: boolean
+        default: true
+      expected_commit:
+        type: string
+        default: ''
+    outputs:
+      release-signed:
+        description: Whether the APK uses the configured release signing key
+        value: ${{ jobs.build.outputs.release-signed }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      MFI_IDENTITY_PK8_BASE64:
+        required: false
+      MFI_CERTIFICATE_P7B_BASE64:
+        required: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: iap2loc-android-${{ github.ref }}
-  cancel-in-progress: true
+  group: iap2loc-android-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: ${{ inputs.tag == '' && github.event_name != 'release' }}
 
 env:
   DOTNET_NOLOGO: 'true'
@@ -40,6 +71,9 @@ jobs:
     name: Test and build the APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
     outputs:
       release-signed: ${{ steps.keystore.outputs.signed }}
     steps:
@@ -48,20 +82,29 @@ jobs:
         with:
           # On a release event this is the release tag; a manual re-run must build the same tag
           # instead of whatever branch was selected in the UI.
-          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+          ref: ${{ (github.event.release.tag_name || inputs.tag) && format('refs/tags/{0}', github.event.release.tag_name || inputs.tag) || github.ref }}
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Verify the checkout matches the release tag
-        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        if: github.event.release.tag_name || inputs.tag
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
           set -euo pipefail
-          actual="$(git describe --tags --exact-match)"
-          if [ "$actual" != "$RELEASE_TAG" ]; then
-            echo "checked out $actual but expected $RELEASE_TAG" >&2
-            exit 1
-          fi
+          python3 scripts/release.py verify-tag "$RELEASE_TAG" --expected-commit "$EXPECTED_COMMIT"
+
+      - name: Compute a stable Android version code from the run creation time
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version_code="$(python3 scripts/release.py android-version-code)"
+          echo "APP_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
 
       - name: Install JDK 21
         uses: actions/setup-java@v4
@@ -149,7 +192,7 @@ jobs:
           version="${RELEASE_TAG#v}"
           if [ -z "$version" ]; then version="0.0.0-dev+${GITHUB_SHA::7}"; fi
           ./gradlew --no-daemon :app:lintRelease :app:assembleRelease \
-            -PappVersion="$version" -PappVersionCode="${GITHUB_RUN_NUMBER}"
+            -PappVersion="$version" -PappVersionCode="$APP_VERSION_CODE"
           mkdir -p ../out
           cp app/build/outputs/apk/release/app-release.apk ../out/iap2loc-android.apk
           cd ../out
@@ -185,7 +228,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+          ref: ${{ (github.event.release.tag_name || inputs.tag) && format('refs/tags/{0}', github.event.release.tag_name || inputs.tag) || github.ref }}
+
+      - name: Verify the smoke test scripts come from the same tagged commit
+        if: github.event.release.tag_name || inputs.tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$(git rev-parse HEAD)" = "$commit"
+          if [ -n "$EXPECTED_COMMIT" ]; then test "$commit" = "$EXPECTED_COMMIT"; fi
 
       - name: Download the CI-built APK
         uses: actions/download-artifact@v4
@@ -217,7 +272,7 @@ jobs:
     name: Attach the APK to the release
     needs: [build, smoke]
     # Branch pushes and pull requests build the artifact but must not touch a release.
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: ${{ !inputs.artifacts_only && (github.event_name == 'release' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
