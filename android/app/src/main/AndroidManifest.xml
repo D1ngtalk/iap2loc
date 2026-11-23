@@ -12,7 +12,7 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
-    <!-- Android 8-11 only return scan results with location; also the console's "current position". -->
+    <!-- Android 8-11 only return scan results with location; also the console's default position and "current position". -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -65,6 +65,18 @@
         <activity
             android:name=".app.ui.HelpActivity"
             android:exported="false" />
+
+        <!-- Rotating must not drop the candidate list, so the search handles config changes itself. -->
+        <activity
+            android:name=".app.ui.PlaceSearchActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize|stateVisible" />
+
+        <activity
+            android:name=".app.ui.SearchSettingsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".app.engine.EngineService"

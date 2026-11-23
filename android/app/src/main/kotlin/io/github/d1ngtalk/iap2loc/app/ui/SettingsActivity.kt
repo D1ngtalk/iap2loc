@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,11 +20,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -37,9 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.d1ngtalk.iap2loc.BuildConfig
@@ -77,6 +71,8 @@ class SettingsActivity : ComponentActivity() {
         var lan by remember { mutableStateOf(prefs.lanAccess) }
         var verbose by remember { mutableStateOf(prefs.verboseLog) }
         var pendingRestart by remember { mutableStateOf(false) }
+        var searchProvider by remember { mutableStateOf(prefs.search.provider) }
+        OnResume { searchProvider = prefs.search.provider }
 
         Scaffold(
             topBar = {
@@ -164,6 +160,13 @@ class SettingsActivity : ComponentActivity() {
                     }
                 }
 
+                SectionCard("地点搜索") {
+                    MaterialHintText("控制台顶部的放大镜按地名搜索，选中结果后模拟位置立即切换过去。\n当前服务商：${searchProvider.label}")
+                    OutlinedButton(onClick = { startActivity(Intent(this@SettingsActivity, SearchSettingsActivity::class.java)) }) {
+                        Text("服务商与 Key")
+                    }
+                }
+
                 SectionCard("诊断") {
                     SwitchRow("详细协议日志", "在控制台日志里显示 iAP2 收发细节，排查问题时打开。对应桌面版 -v。", verbose) {
                         verbose = it
@@ -222,22 +225,3 @@ private fun AddressDialog(initial: String, onDismiss: () -> Unit, onSave: (Strin
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
-
-@Composable
-private fun SwitchRow(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    // The whole row toggles, not only the small switch.
-    Row(
-        Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            MaterialHintText(body)
-        }
-        Switch(checked = checked, onCheckedChange = null)
-    }
-}
-
-@Composable
-private fun MaterialHintText(text: String) =
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,10 +56,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.github.d1ngtalk.iap2loc.BuildConfig
+import io.github.d1ngtalk.iap2loc.Log
 import io.github.d1ngtalk.iap2loc.app.app
 import io.github.d1ngtalk.iap2loc.app.engine.EngineHost
 import io.github.d1ngtalk.iap2loc.app.ui.onboarding.OnboardingActivity
 import io.github.d1ngtalk.iap2loc.app.ui.theme.Iap2LocTheme
+import io.github.d1ngtalk.iap2loc.geocode.Place
+import io.github.d1ngtalk.iap2loc.protocol.TargetMode
+import io.github.d1ngtalk.iap2loc.protocol.TargetUpdate
+import org.json.JSONObject
+import java.util.Locale
 
 /**
  * The full desktop console (Web/index.html) in a WebView, served by the in-process web server.
@@ -79,6 +86,8 @@ class ConsoleActivity : ComponentActivity() {
         geolocationRequest?.let { (origin, callback) -> callback.invoke(origin, granted.values.any { it }, false) }
         geolocationRequest = null
     }
+
+    private val pickPlace = registerForActivityResult(PlaceSearchActivity.Pick()) { place -> place?.let(::goTo) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,6 +143,9 @@ class ConsoleActivity : ComponentActivity() {
                 TopAppBar(
                     title = { Text("iap2loc") },
                     actions = {
+                        IconButton(onClick = { pickPlace.launch(Unit) }) {
+                            Icon(Icons.Filled.Search, contentDescription = "搜索地点")
+                        }
                         IconButton(onClick = { open(HelpActivity::class.java) }) {
                             Icon(Icons.Filled.Info, contentDescription = "帮助")
                         }
@@ -225,6 +237,25 @@ class ConsoleActivity : ComponentActivity() {
         )
     }
 
+    /** A place picked in the search: the page moves there and applies it, as if it was clicked on the map. */
+    private fun goTo(place: Place) {
+        Log.info("地点搜索：${place.name}（${"%.6f".format(Locale.ROOT, place.latitude)}, ${"%.6f".format(Locale.ROOT, place.longitude)}）")
+        val view = webView ?: return applyDirectly(place)
+        val script = "typeof gotoPlace === 'function' && gotoPlace(${place.latitude}, ${place.longitude}, ${JSONObject.quote(place.name)})"
+        view.evaluateJavascript(script) { result -> if (result != "true") applyDirectly(place) }
+    }
+
+    /** The page is not up yet: set the shared target directly, the page shows it once it polls. */
+    private fun applyDirectly(place: Place) {
+        val manager = EngineHost.engine?.manager
+        if (manager == null) {
+            Toast.makeText(this, "控制台尚未启动，无法切换到 ${place.name}", Toast.LENGTH_LONG).show()
+            return
+        }
+        manager.applyTarget(TargetUpdate(mode = TargetMode.POINT, latitude = place.latitude, longitude = place.longitude), null)
+        Toast.makeText(this, "已切换到 ${place.name}", Toast.LENGTH_SHORT).show()
+    }
+
     private fun open(activity: Class<*>, section: String? = null) {
         startActivity(Intent(this, activity).apply { if (section != null) putExtra(HelpActivity.EXTRA_SECTION, section) })
     }
@@ -263,6 +294,13 @@ class ConsoleActivity : ComponentActivity() {
                 // Links in the page (help, licences) open in the browser, never inside the console.
                 openUrl(request.url.toString())
                 return true
+            }
+
+            // The page always opens on its built-in default; move it to the phone's position the target starts at.
+            override fun onPageFinished(view: WebView, url: String) {
+                val here = EngineHost.home ?: return
+                if (!EngineHost.targetIsHome()) return
+                view.evaluateJavascript("typeof showPlace === 'function' && showPlace(${here.latitude}, ${here.longitude})", null)
             }
         }
 

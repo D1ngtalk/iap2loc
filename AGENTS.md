@@ -3,8 +3,11 @@
 ## Layout
 
 - Desktop (Windows / macOS): C# in the repository root (`Protocol/`, `Engine/`, `Transport/`, `Web/`), `Iap2Loc.csproj`, .NET 10.
-- Android: Kotlin in `android/` (Gradle). `android/core` is a pure-JVM port of `Protocol/`, `Engine/` and `Web/WebServer.cs`;
-  `android/app` adds the Bluetooth transport, foreground service and Compose UI. `Iap2Loc.csproj` excludes `android/**`.
+- Android: Kotlin in `android/` (Gradle). `android/core` is a pure-JVM port of `Protocol/`, `Engine/` and `Web/WebServer.cs`,
+  plus `geocode/` (Android-only place search: Photon, Nominatim and the AMap / Baidu / Tencent web APIs, no vendor SDKs);
+  `android/app` adds the Bluetooth transport, foreground service, Android Geocoder and Compose UI. `Iap2Loc.csproj` excludes `android/**`.
+- `geocode/Gcj02.kt` must stay formula-identical to `wgs2gcj` / `gcj2wgs` in `Web/index.html` (tests pin values from the JS).
+  The native search applies a pick through `gotoPlace()` in `Web/index.html`; the JSON API is unchanged.
 - `Web/index.html` is shared: the desktop embeds it, `android/core` packages it as `/web/index.html`. Keep the JSON API
   of `Web/WebServer.cs` and `android/core/.../web/WebServer.kt` identical.
 

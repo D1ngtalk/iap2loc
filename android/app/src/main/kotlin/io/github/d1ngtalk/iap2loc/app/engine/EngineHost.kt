@@ -6,11 +6,16 @@ import androidx.core.content.ContextCompat
 import io.github.d1ngtalk.iap2loc.Log
 import io.github.d1ngtalk.iap2loc.app.app
 import io.github.d1ngtalk.iap2loc.engine.Engine
+import io.github.d1ngtalk.iap2loc.protocol.GeoPoint
+import io.github.d1ngtalk.iap2loc.protocol.TargetMode
+import io.github.d1ngtalk.iap2loc.protocol.TargetUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * The process-wide engine. [EngineService] owns its lifetime so streaming survives the activities;
@@ -30,6 +35,19 @@ object EngineHost {
     @Volatile
     var engine: Engine? = null
         private set
+
+    /** Where the phone was when [engine] started; its target starts there. Null falls back to the built-in default. */
+    @Volatile
+    var home: GeoPoint? = null
+        private set
+
+    /** The target is still the phone's position from startup, i.e. nothing has moved it yet. */
+    fun targetIsHome(): Boolean {
+        val here = home ?: return false
+        val target = engine?.manager?.target?.snapshot() ?: return false
+        return target.mode == TargetMode.POINT && target.routePoints == 0 &&
+            abs(target.latitude - here.latitude) < 1e-6 && abs(target.longitude - here.longitude) < 1e-6
+    }
 
     fun configFile(context: Context) = File(context.filesDir, "iap2loc.json")
 
@@ -62,6 +80,10 @@ object EngineHost {
         val prefs = context.app.prefs
         try {
             val created = Engine(configFile(context), port = prefs.port, lanAccess = prefs.lanAccess)
+            home = DeviceLocation.find(context)?.also { here ->
+                created.manager.applyTarget(TargetUpdate(mode = TargetMode.POINT, latitude = here.latitude, longitude = here.longitude), null)
+                Log.info("默认位置：手机当前位置（${"%.6f".format(Locale.ROOT, here.latitude)}, ${"%.6f".format(Locale.ROOT, here.longitude)}）")
+            }
             engine = created
             state.value = Status.Running(created.server.port, prefs.lanAccess)
         } catch (ex: Exception) {
@@ -75,6 +97,7 @@ object EngineHost {
     internal fun close(restarting: Boolean = false) {
         val current = engine
         engine = null
+        home = null
         runCatching { current?.close() }
         state.value = if (restarting) Status.Starting else Status.Stopped
     }

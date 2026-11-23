@@ -90,6 +90,7 @@ class HelpActivity : ComponentActivity() {
                         listOf(
                             "地图基准：OSM 使用 WGS-84，高德使用 GCJ-02，切换时坐标会自动换算。",
                             "单点模式：点地图或拖动标记，也可以直接填经纬度。",
+                            "搜索地点：点顶部的放大镜，输入地名后按搜索键，从候选列表里选一个，模拟位置立即切换过去。服务商（默认 OpenStreetMap Photon，也可用高德、百度、腾讯等）在「设置 → 地点搜索」里选择。",
                             "路径模式：依次点地图连成路线，拖动序号调整，长按序号删除；或「导入 GPX」。带时间戳的 GPX 按录制节奏回放，否则按设定速度匀速前进。",
                             "随机化：坐标偏移、随机精度和高度会在点「应用修改」时掷一次，之后保持不变。",
                             "收藏：右上角「收藏当前」保存坐标，点收藏项即可回到该位置。",
@@ -115,7 +116,7 @@ class HelpActivity : ComponentActivity() {
                 Expandable("关于与许可", open = false) {
                     Text(
                         "iap2loc 是 GPL-3.0 开源软件，安卓版与 Windows / macOS 版共用同一个网页控制台和配置格式。" +
-                            "地图库 Leaflet 1.9.4（BSD-2-Clause）随 App 离线打包。\n\n" +
+                            "地图库 Leaflet 1.9.4（BSD-2-Clause）随 App 离线打包。地点搜索默认使用 Photon，地点数据 © OpenStreetMap 贡献者（ODbL）。\n\n" +
                             "完成 MFi 认证需要合法取得的配件身份，App 不包含任何私钥或证书。仅在自有设备上用于协议研究与合规测试；" +
                             "不保证 iOS 一定采用配件定位。",
                         style = MaterialTheme.typography.bodyMedium,

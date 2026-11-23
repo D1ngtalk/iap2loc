@@ -209,7 +209,7 @@ fun ColumnScope.PermissionsStep(nav: Nav) {
                 StatusRow(
                     if (locationGranted) Check.DONE else Check.PENDING,
                     "位置（可选）",
-                    "只给控制台的「当前位置」按钮用，把地图移到你现在的位置。不需要可以跳过。",
+                    "控制台启动时以手机当前位置作为默认位置，「当前位置」按钮也要用。不给则默认在上海人民广场附近，可以跳过。",
                 ) {
                     if (!locationGranted) {
                         val permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)

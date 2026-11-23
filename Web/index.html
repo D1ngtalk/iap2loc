@@ -1026,6 +1026,31 @@ el('favorites').addEventListener('click', async event => {
   if (map) map.setView(S.datum === 'gcj' ? wgs2gcj(S.target.lat, S.target.lon) : [S.target.lat, S.target.lon], map.getZoom());
 });
 
+/* ---------- host ---------- */
+
+// The Android app's place search calls this with a WGS-84 point: jump there and apply it, as if the
+// map had been clicked and 应用修改 pressed. Returns false when the coordinates are unusable.
+function gotoPlace(lat, lon, name) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  setMode('point');
+  applyPicked(lat, lon);
+  if (map) map.setView(toLatLng(S.target), Math.max(map.getZoom(), 16));
+  applyTarget().then(ok => { if (ok) notify('已切换到 ' + (name || '所选地点')); });
+  return true;
+}
+
+// The Android app starts the target at the phone's own WGS-84 position: show it in the editor
+// without applying anything, since the target is already there. Edits in progress are kept.
+function showPlace(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (dirty || S.mode !== 'point') return true;
+  S.target.lat = +clampLat(lat).toFixed(6);
+  S.target.lon = +wrapLon(lon).toFixed(6);
+  renderTarget(true);
+  if (map) map.setView(toLatLng(S.target), Math.max(map.getZoom(), 15));
+  return true;
+}
+
 buildModes();
 initMap();
 
