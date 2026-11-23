@@ -11,6 +11,8 @@ on:
       - 'Protocol/**'
       - 'Web/**'
       - 'scripts/smoke-android.sh'
+      - 'scripts/prepare-android-mfi.py'
+      - 'scripts/test_prepare_android_mfi.py'
       - '.github/workflows/android.yml'
   release:
     types: [published]
@@ -82,9 +84,12 @@ jobs:
           dotnet run --project android/tools/golden-vectors/GoldenVectors.csproj -c Release -- \
             vectors "$RUNNER_TEMP/csharp-vectors.json"
 
+      - name: Test MFi packaging with throwaway material
+        run: python3 -m unittest discover -s scripts -p 'test_prepare_android_mfi.py' -v
+
       - name: Unit tests
         working-directory: android
-        run: IAP2LOC_GOLDEN_VECTORS="$RUNNER_TEMP/csharp-vectors.json" ./gradlew --no-daemon :core:test
+        run: IAP2LOC_GOLDEN_VECTORS="$RUNNER_TEMP/csharp-vectors.json" ./gradlew --no-daemon :core:test :app:testReleaseUnitTest
 
       # The Kotlin accessory against the C# link layer playing the iPhone, with a throwaway key.
       - name: Interop test against the C# implementation
@@ -123,6 +128,14 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Prepare optional bundled MFi identity
+        # PR builds never receive the distributable identity.
+        if: github.event_name != 'pull_request'
+        env:
+          MFI_IDENTITY_PK8_BASE64: ${{ secrets.MFI_IDENTITY_PK8_BASE64 }}
+          MFI_CERTIFICATE_P7B_BASE64: ${{ secrets.MFI_CERTIFICATE_P7B_BASE64 }}
+        run: python3 scripts/prepare-android-mfi.py
+
       - name: Build the release APK and run lint
         working-directory: android
         shell: bash
@@ -147,6 +160,10 @@ jobs:
       - name: Remove the signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Remove temporary MFi assets
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/iap2loc-mfi-assets"
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4

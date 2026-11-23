@@ -12,6 +12,8 @@ val appVersionCode = providers.gradleProperty("appVersionCode").getOrElse("1").t
 
 // Release signing comes from the environment only, never from a file in the repository.
 val keystorePath: String? = System.getenv("IAP2LOC_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).isFile }
+// Optional CI-only assets directory containing offline-mfi/{identity.pk8,certificate.p7b}.
+val mfiAssetsPath = System.getenv("IAP2LOC_MFI_ASSETS")?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "io.github.d1ngtalk.iap2loc"
@@ -44,6 +46,13 @@ android {
             // Without a release key the APK is signed with the debug key so it still installs.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+    }
+
+    if (mfiAssetsPath != null) {
+        for (name in listOf("identity.pk8", "certificate.p7b")) {
+            require(file("$mfiAssetsPath/offline-mfi/$name").isFile) { "Missing bundled MFi file: $name" }
+        }
+        sourceSets.getByName("release").assets.srcDir(mfiAssetsPath)
     }
 
     compileOptions {
@@ -86,4 +95,6 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
+    testImplementation(kotlin("test-junit"))
+    testImplementation(libs.bouncycastle.pkix)
 }

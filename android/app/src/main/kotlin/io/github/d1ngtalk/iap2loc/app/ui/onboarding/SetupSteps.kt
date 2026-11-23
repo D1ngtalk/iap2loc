@@ -64,9 +64,10 @@ fun ColumnScope.WelcomeStep(nav: Nav) {
             StatusRow(Check.DONE, "一部安卓手机", "Android 8.0 及以上、有蓝牙，就是你手上这部。")
             StatusRow(Check.PENDING, "一部 iPhone", "支持 iOS 12 – 27，已在 iOS 12.5、26、27 上测试。")
             StatusRow(
-                Check.PENDING,
+                if (LocalContext.current.app.identity.isPresent) Check.DONE else Check.PENDING,
                 "MFi 配件身份文件",
-                "合法取得的 identity.pk8（私钥）和 certificate.p7b（证书链）。本 App 不包含任何密钥或证书。",
+                if (LocalContext.current.app.identity.usingBundled) "本版本已内置 MFi 身份，无需另行准备文件。" else
+                    "合法取得的 identity.pk8（私钥）和 certificate.p7b（证书链）；已导入的文件可以继续使用。",
             )
         }
 

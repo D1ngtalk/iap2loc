@@ -42,14 +42,15 @@ fun ColumnScope.IdentityStep(nav: Nav) {
 
     StepLayout(
         nav,
-        title = "导入 MFi 身份",
+        title = if (identity.usingBundled) "MFi 身份已就绪" else "导入 MFi 身份",
         subtitle = "iPhone 只接受通过 MFi 认证的配件发来的定位。认证需要你合法取得的配件身份：" +
             "identity.pk8（PKCS#8 格式的 P-256 私钥）和 certificate.p7b（证书链）。",
         nextLabel = if (present) "下一步" else "跳过",
         onNext = { if (present) nav.next() else confirmSkip = true },
     ) {
         IdentityDetails()
-        Callout("文件只保存在本 App 的私有目录里，不会被备份、同步或上传。可以一次选择两个文件，也可以选择包含它们的 .zip 压缩包。")
+        Callout(if (identity.usingBundled) "当前使用 APK 内置的 MFi 身份，无需另行导入。也可以选择自己的文件覆盖内置身份。" else
+            "导入的文件只保存在本 App 的私有目录里，不会被备份、同步或上传。可以一次选择两个文件，也可以选择包含它们的 .zip 压缩包。")
     }
 
     if (confirmSkip) {
@@ -87,16 +88,14 @@ fun IdentityDetails() {
         busy = true
         scope.launch {
             val outcome = withContext(Dispatchers.IO) { identity.import(context.contentResolver, uris) }
-            problems = outcome.problems + listOfNotNull(
-                "只导入了私钥，还需要 certificate.p7b".takeIf { outcome.keyImported && !outcome.certificateImported && !identity.isPresent },
-                "只导入了证书，还需要 identity.pk8".takeIf { outcome.certificateImported && !outcome.keyImported && !identity.isPresent },
-            )
+            problems = outcome.problems
             busy = false
             IdentityRevision.intValue++
         }
     }
 
     SectionCard("MFi 身份") {
+        if (identity.usingBundled) Text("当前来源：APK 内置")
         when {
             report == null -> StatusRow(Check.WARN, "尚未导入", "选择 identity.pk8 和 certificate.p7b 两个文件。")
             report.isFailure -> StatusRow(Check.FAILED, "文件无法使用", report.exceptionOrNull()?.message)
@@ -107,7 +106,7 @@ fun IdentityDetails() {
             FilledTonalButton(enabled = !busy, onClick = { pick.launch(arrayOf("*/*")) }) {
                 Text(if (identity.isPresent) "重新选择文件" else "选择文件")
             }
-            if (identity.isPresent) {
+            if (identity.hasImportedFiles) {
                 OutlinedButton(onClick = {
                     identity.delete()
                     problems = emptyList()
@@ -117,6 +116,9 @@ fun IdentityDetails() {
         }
     }
 
+    if (identity.missingImportedFile != null) {
+        identity.warning?.let { Callout(it, Tone.WARN) }
+    }
     for (problem in problems) Callout(problem, Tone.ERROR)
 }
 

@@ -117,7 +117,7 @@ class HelpActivity : ComponentActivity() {
                     Text(
                         "iap2loc 是 GPL-3.0 开源软件，安卓版与 Windows / macOS 版共用同一个网页控制台和配置格式。" +
                             "地图库 Leaflet 1.9.4（BSD-2-Clause）随 App 离线打包。地点搜索默认使用 Photon，地点数据 © OpenStreetMap 贡献者（ODbL）。\n\n" +
-                            "完成 MFi 认证需要合法取得的配件身份，App 不包含任何私钥或证书。仅在自有设备上用于协议研究与合规测试；" +
+                            "完成 MFi 认证需要合法取得的配件身份；内置身份版无需导入，普通版需自行导入。仅在自有设备上用于协议研究与合规测试；" +
                             "不保证 iOS 一定采用配件定位。",
                         style = MaterialTheme.typography.bodyMedium,
                     )

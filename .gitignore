@@ -37,3 +37,6 @@ test-ident/
 local.properties
 *.jks
 *.keystore
+
+# Python script test bytecode
+__pycache__/
