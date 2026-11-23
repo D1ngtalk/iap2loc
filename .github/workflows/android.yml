@@ -1,0 +1,253 @@
+name: Android build, smoke test and release
+
+on:
+  push:
+    branches:
+      - main
+      - 'dev/**'
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'Protocol/**'
+      - 'Web/**'
+      - 'scripts/smoke-android.sh'
+      - '.github/workflows/android.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag，仅用于重跑发布'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iap2loc-android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    name: Test and build the APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      release-signed: ${{ steps.keystore.outputs.signed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # On a release event this is the release tag; a manual re-run must build the same tag
+          # instead of whatever branch was selected in the UI.
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+      - name: Verify the checkout matches the release tag
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          actual="$(git describe --tags --exact-match)"
+          if [ "$actual" != "$RELEASE_TAG" ]; then
+            echo "checked out $actual but expected $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The Kotlin port must stay byte-compatible with Protocol/*.cs: the parity tests run against
+      # reference outputs freshly generated from the current C# sources.
+      - name: Generate golden vectors from the C# sources
+        run: |
+          dotnet run --project android/tools/golden-vectors/GoldenVectors.csproj -c Release -- \
+            vectors "$RUNNER_TEMP/csharp-vectors.json"
+
+      - name: Unit tests
+        working-directory: android
+        run: IAP2LOC_GOLDEN_VECTORS="$RUNNER_TEMP/csharp-vectors.json" ./gradlew --no-daemon :core:test
+
+      # The Kotlin accessory against the C# link layer playing the iPhone, with a throwaway key.
+      - name: Interop test against the C# implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$work/key.pem"
+          openssl pkcs8 -topk8 -nocrypt -in "$work/key.pem" -outform DER -out "$work/identity.pk8"
+          dotnet build android/tools/golden-vectors/GoldenVectors.csproj -c Release --nologo -v quiet
+          dotnet run --no-build --project android/tools/golden-vectors/GoldenVectors.csproj -c Release -- \
+            phone 18751 "$work/identity.pk8" > "$work/phone.log" 2>&1 &
+          phone=$!
+          # The phone accepts exactly one client, so wait for its log line instead of probing the port.
+          for _ in $(seq 1 30); do grep -q 'listening' "$work/phone.log" && break; sleep 1; done
+          (cd android && IAP2LOC_INTEROP_PORT=18751 IAP2LOC_INTEROP_KEY="$work/identity.pk8" \
+            ./gradlew --no-daemon :core:test --tests '*CSharpInteropTest*' --rerun)
+          wait "$phone"
+          cat "$work/phone.log"
+          grep -q '^PASS' "$work/phone.log"
+          rm -rf "$work"
+
+      - name: Prepare the signing key
+        id: keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "IAP2LOC_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK is signed with a throwaway debug key"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the release APK and run lint
+        working-directory: android
+        shell: bash
+        env:
+          IAP2LOC_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          IAP2LOC_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          IAP2LOC_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          if [ -z "$version" ]; then version="0.0.0-dev+${GITHUB_SHA::7}"; fi
+          ./gradlew --no-daemon :app:lintRelease :app:assembleRelease \
+            -PappVersion="$version" -PappVersionCode="${GITHUB_RUN_NUMBER}"
+          mkdir -p ../out
+          cp app/build/outputs/apk/release/app-release.apk ../out/iap2loc-android.apk
+          cd ../out
+          sha256sum iap2loc-android.apk > SHA256SUMS
+          cat SHA256SUMS
+          ls -l
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap2loc-android
+          path: |
+            out/iap2loc-android.apk
+            out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  smoke:
+    name: Smoke-test on an emulator
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+      - name: Download the CI-built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: iap2loc-android
+          path: package
+
+      - name: Verify the checksum
+        working-directory: package
+        run: sha256sum -c SHA256SUMS
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install, launch and query the console
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/smoke-android.sh package/iap2loc-android.apk
+
+  release:
+    name: Attach the APK to the release
+    needs: [build, smoke]
+    # Branch pushes and pull requests build the artifact but must not touch a release.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # Every CI run would otherwise sign with a new debug key, and Android refuses to update an
+      # app whose signature changed: a release must carry the project's own key.
+      - name: Require the release signing key
+        if: needs.build.outputs.release-signed != 'true'
+        run: |
+          echo "Set the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD secrets (see README-Android.md)" >&2
+          exit 1
+
+      - name: Download the CI-tested artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: iap2loc-android
+          path: package
+
+      - name: Attach assets to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_TAG:-}" ]; then
+            echo "RELEASE_TAG is empty; this job only runs for release or workflow_dispatch" >&2
+            exit 1
+          fi
+
+          cd package
+          test -f iap2loc-android.apk
+          test -f SHA256SUMS
+
+          # Distinct asset name: the Windows and macOS workflows publish their own checksum files.
+          mv SHA256SUMS iap2loc-android.apk.sha256
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $RELEASE_TAG not found; publish the release first" >&2
+            exit 1
+          fi
+
+          gh release upload "$RELEASE_TAG" \
+            iap2loc-android.apk iap2loc-android.apk.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name'

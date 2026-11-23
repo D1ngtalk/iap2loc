@@ -30,3 +30,10 @@ ident/
 secrets/
 test-identity/
 test-ident/
+
+# Android (android/): Gradle caches, the local SDK path and release signing keys
+.gradle/
+.kotlin/
+local.properties
+*.jks
+*.keystore
