@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Web/index.html" />
+    <!-- The Android app and its test tools live in android/ and build with Gradle. -->
+    <Compile Remove="android/**" />
   </ItemGroup>
 
 </Project>
