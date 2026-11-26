@@ -20,13 +20,24 @@ on:
         description: '已存在的 tag，仅用于重跑发布'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      artifacts_only:
+        type: boolean
+        default: true
+      expected_commit:
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: iap2loc-windows-${{ github.ref }}
-  cancel-in-progress: true
+  group: iap2loc-windows-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: ${{ inputs.tag == '' && github.event_name != 'release' }}
 
 env:
   DOTNET_NOLOGO: 'true'
@@ -38,26 +49,30 @@ jobs:
     name: Build and smoke-test win-x64
     runs-on: windows-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           # On a release event this is the release tag; a manual re-run must build the same tag
           # instead of whatever branch was selected in the UI.
-          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+          ref: ${{ (github.event.release.tag_name || inputs.tag) && format('refs/tags/{0}', github.event.release.tag_name || inputs.tag) || github.ref }}
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Verify the checkout matches the release tag
-        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        if: github.event.release.tag_name || inputs.tag
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
           set -euo pipefail
-          actual="$(git describe --tags --exact-match)"
-          if [ "$actual" != "$RELEASE_TAG" ]; then
-            echo "checked out $actual but expected $RELEASE_TAG" >&2
-            exit 1
-          fi
+          python scripts/release.py verify-tag "$RELEASE_TAG" --expected-commit "$EXPECTED_COMMIT"
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
@@ -145,7 +160,7 @@ jobs:
     name: Attach the executable to the release
     needs: build
     # Branch pushes and pull requests build the artifact but must not touch a release.
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: ${{ !inputs.artifacts_only && (github.event_name == 'release' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

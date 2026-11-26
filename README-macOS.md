@@ -46,7 +46,7 @@
 
 ## GitHub Actions 全自动构建 / 验证 / 分发
 
-构建不依赖开发者的 Mac。工作流 `.github/workflows/macos.yml` 在分支更新、PR 与版本标签时触发：
+构建不依赖开发者的 Mac。[macOS 工作流](.github/workflows/macos.yml) 在分支更新、PR 或手动发布时执行；推送版本标签时由[统一发布工作流](.github/workflows/release.yml) 调用：
 
 `https://github.com/D1ngtalk/iap2loc/actions/workflows/macos.yml`
 
@@ -55,7 +55,9 @@
 2. 每个架构各自编译通用 IOBluetooth 动态库、发布自包含 `.app`、ad-hoc 签名、打包 DMG 并生成 `SHA256SUMS`；
 3. **在自己的架构上验证**：挂载刚生成的 DMG，校验 SHA256、签名、可执行文件架构，启动程序并测试 HTTP 控制页面与 JSON API；
 4. 通过后上传 Actions Artifacts，保留 30 天；
-5. 仅当推送 `v*` 标签且两个架构都通过时，才创建 GitHub Release，附两个 DMG 与 `iap2loc-macos.sha256`。PR 与普通分支不会创建 Release。
+5. 推送 `v*` 标签后，统一流程等待 macOS 两种架构、Windows 和 Android 全部通过，再创建草稿 Release，上传两个 DMG、Windows EXE、Android APK 及三个校验文件，确认齐全后公开发布。带预发布后缀的标签自动标记为 Pre-release。PR 与普通分支不会创建 Release。
+
+推标签命令、Android 签名要求和失败后的重跑方法见[自动发布说明](README.md#推标签自动发布)。单平台手动重跑指定标签时仍可向已有 Release 上传两个 DMG。
 
 macOS 15 GitHub runner 的蓝牙硬件/iPhone 通常不可用。因此 CI 检测 DMG 可安装与可启动、正常调用程序和 Web API；不会伪称通过真实 iAP2、RFComm/MFi 连接、定位改变和授权。最终实机验收是单独的审核关口。
 
