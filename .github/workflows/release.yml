@@ -1,0 +1,151 @@
+name: Release all platforms
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - 'dev/**'
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/release.py'
+      - 'scripts/test_release.py'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/release.py'
+      - 'scripts/test_release.py'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已有版本标签，重新构建全部平台并恢复未完成的草稿发布'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iap2loc-release-${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Validate release configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release logic without publishing anything
+        run: python3 -m unittest discover -s scripts -p 'test_release.py' -v
+      - name: Validate workflows with pinned actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL --retry 3 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$archive"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -shellcheck='' -pyflakes=''
+
+  metadata:
+    name: Verify version tag
+    needs: checks
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate SemVer and the tagged commit
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'push' && github.sha || '' }}
+        run: python3 scripts/release.py verify-tag "$RELEASE_TAG" --expected-commit "$EXPECTED_COMMIT" --github-output "$GITHUB_OUTPUT"
+
+  windows:
+    needs: metadata
+    # The called workflow still declares a write-capable standalone upload job, which is
+    # disabled by artifacts_only. Its actual build job explicitly limits itself to read.
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows.yml
+    with:
+      tag: ${{ needs.metadata.outputs.tag }}
+      expected_commit: ${{ needs.metadata.outputs.commit }}
+      artifacts_only: true
+
+  macos:
+    needs: metadata
+    permissions:
+      contents: write
+    uses: ./.github/workflows/macos.yml
+    with:
+      tag: ${{ needs.metadata.outputs.tag }}
+      expected_commit: ${{ needs.metadata.outputs.commit }}
+      artifacts_only: true
+
+  android:
+    needs: metadata
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/android.yml
+    with:
+      tag: ${{ needs.metadata.outputs.tag }}
+      expected_commit: ${{ needs.metadata.outputs.commit }}
+      artifacts_only: true
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      MFI_IDENTITY_PK8_BASE64: ${{ secrets.MFI_IDENTITY_PK8_BASE64 }}
+      MFI_CERTIFICATE_P7B_BASE64: ${{ secrets.MFI_CERTIFICATE_P7B_BASE64 }}
+
+  publish:
+    name: Publish verified installers together
+    needs: [metadata, windows, macos, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Require a release-signed Android APK
+        if: needs.android.outputs.release-signed != 'true'
+        run: |
+          echo 'Android release signing is required; configure the four ANDROID_* signing secrets.' >&2
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.metadata.outputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download artifacts from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: iap2loc-*
+          path: artifacts
+          merge-multiple: false
+      - name: Verify checksums, upload to a draft and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          EXPECTED_COMMIT: ${{ needs.metadata.outputs.commit }}
+          ANDROID_SIGNED: ${{ needs.android.outputs.release-signed }}
+        run: python3 scripts/release.py publish "$RELEASE_TAG" artifacts --expected-commit "$EXPECTED_COMMIT" --android-signed "$ANDROID_SIGNED"
